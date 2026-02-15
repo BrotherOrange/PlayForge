@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: PlayForge
+  profiles:
+    active: local
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY:}
+      model-name: gpt-4o
+    streaming-chat-model:
+      api-key: ${OPENAI_API_KEY:}
+      model-name: gpt-4o
+  anthropic:
+    chat-model:
+      api-key: ${ANTHROPIC_API_KEY:}
+      model-name: claude-sonnet-4-5-20250929
+    streaming-chat-model:
+      api-key: ${ANTHROPIC_API_KEY:}
+      model-name: claude-sonnet-4-5-20250929
+  google-ai-gemini:
+    chat-model:
+      api-key: ${GEMINI_API_KEY:}
+      model-name: gemini-2.0-flash
+    streaming-chat-model:
+      api-key: ${GEMINI_API_KEY:}
+      model-name: gemini-2.0-flash
+  community:
+    dashscope:
+      chat-model:
+        api-key: ${DASHSCOPE_API_KEY:}
+        model-name: qwen-max
