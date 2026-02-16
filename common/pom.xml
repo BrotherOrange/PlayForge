@@ -12,4 +12,12 @@
     <name>playforge-common</name>
     <description>Shared utilities, constants, enums, exceptions</description>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
 </project>

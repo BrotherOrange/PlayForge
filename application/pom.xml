@@ -22,8 +22,17 @@
             <artifactId>playforge-domain</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.game</groupId>
+            <artifactId>playforge-infrastructure</artifactId>
+        </dependency>
+        <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
