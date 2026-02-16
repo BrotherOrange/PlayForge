@@ -1,0 +1,25 @@
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Build outputs
+**/target/
+frontend/build/
+frontend/node_modules/
+
+# Deploy scripts (not needed in image)
+deploy/
+
+# Docs
+*.md
+LICENSE
+
+# OS files
+.DS_Store
+Thumbs.db

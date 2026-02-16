@@ -19,6 +19,7 @@
         <java.version>25</java.version>
         <mybatis-spring-boot.version>3.0.5</mybatis-spring-boot.version>
         <langchain4j.version>1.11.0</langchain4j.version>
+        <aliyun-sdk-oss.version>3.18.1</aliyun-sdk-oss.version>
     </properties>
 
     <modules>
@@ -66,6 +67,13 @@
                 <version>${langchain4j.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- Alibaba Cloud OSS -->
+            <dependency>
+                <groupId>com.aliyun.oss</groupId>
+                <artifactId>aliyun-sdk-oss</artifactId>
+                <version>${aliyun-sdk-oss.version}</version>
             </dependency>
 
             <!-- Third-party -->

@@ -1,43 +1,33 @@
 spring:
-  application:
-    name: PlayForge
-  profiles:
-    active: local
-
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:rm-rj9a593mtk0vu1scf.mysql.rds-aliyun-america.rds.aliyuncs.com}:3306/${MYSQL_DB:play-forge}?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC
-    username: ${MYSQL_USERNAME:game_root}
-    password: ${MYSQL_PASSWORD:}
+    url: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_DB:play-forge}?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 10
+      maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 30000
 
   data:
     redis:
-      host: ${REDIS_HOST:r-rj92ag3zeygn50rrrb.redis.rds-aliyun-america.rds.aliyuncs.com}
+      host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
       username: ${REDIS_USERNAME:default}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD}
       timeout: 5000
       lettuce:
         pool:
-          max-active: 8
+          max-active: 16
           max-idle: 8
-          min-idle: 2
+          min-idle: 4
 
 aliyun:
   oss:
-    endpoint: ${OSS_ENDPOINT:oss-us-west-1.aliyuncs.com}
-    access-key-id: ${OSS_ACCESS_KEY_ID:}
-    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    endpoint: ${OSS_ENDPOINT:oss-us-west-1-internal.aliyuncs.com}
+    access-key-id: ${OSS_ACCESS_KEY_ID}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET}
     bucket-name: ${OSS_BUCKET_NAME:oss-game-design}
-
-mybatis:
-  mapper-locations: classpath*:mapper/**/*.xml
-  configuration:
-    map-underscore-to-camel-case: true
 
 langchain4j:
   open-ai:
