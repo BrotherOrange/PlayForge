@@ -34,10 +34,22 @@ aliyun:
     access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
     bucket-name: ${OSS_BUCKET_NAME:oss-game-design}
 
-mybatis:
-  mapper-locations: classpath*:mapper/**/*.xml
+mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
+      table-prefix: t_
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+auth:
+  jwt:
+    secret: ${JWT_SECRET:playforge-dev-secret-key-must-be-at-least-32-bytes}
+    access-token-expire-minutes: 30
+    refresh-token-expire-days: 7
 
 langchain4j:
   open-ai:

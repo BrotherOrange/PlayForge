@@ -1,0 +1,69 @@
+package com.game.playforge.api.config;
+
+import com.game.playforge.common.exception.BusinessException;
+import com.game.playforge.common.result.ApiResult;
+import com.game.playforge.common.result.ResultCode;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/**
+ * 全局异常处理器
+ * <p>
+ * 统一捕获业务异常、参数校验异常和未知异常，转换为标准 {@link ApiResult} 响应，
+ * 并设置与 {@link ResultCode} 绑定的HTTP状态码。
+ * </p>
+ *
+ * @author Richard Zhang
+ * @since 1.0
+ */
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    /**
+     * 处理业务异常
+     *
+     * @param e 业务异常
+     * @return 失败响应
+     */
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResult<Void>> handleBusinessException(BusinessException e) {
+        ResultCode resultCode = e.getResultCode();
+        log.warn("业务异常, code={}, message={}", resultCode.getCode(), e.getMessage());
+        return ResponseEntity.status(resultCode.getHttpStatus())
+                .body(ApiResult.fail(resultCode));
+    }
+
+    /**
+     * 处理参数校验异常
+     *
+     * @param e 参数校验异常
+     * @return 失败响应
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResult<Void>> handleValidationException(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(fieldError -> fieldError.getDefaultMessage())
+                .orElse(ResultCode.PARAM_VALIDATION_FAILED.getMessage());
+        log.warn("参数校验失败, message={}", message);
+        return ResponseEntity.status(ResultCode.PARAM_VALIDATION_FAILED.getHttpStatus())
+                .body(ApiResult.fail(ResultCode.PARAM_VALIDATION_FAILED.getCode(), message));
+    }
+
+    /**
+     * 处理未知异常
+     *
+     * @param e 异常
+     * @return 失败响应
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResult<Void>> handleException(Exception e) {
+        log.error("系统异常, message={}", e.getMessage(), e);
+        return ResponseEntity.status(ResultCode.INTERNAL_ERROR.getHttpStatus())
+                .body(ApiResult.fail(ResultCode.INTERNAL_ERROR));
+    }
+}

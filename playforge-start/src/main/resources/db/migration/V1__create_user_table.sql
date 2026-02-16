@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS t_user (
+    id         BIGINT       NOT NULL COMMENT '用户ID',
+    phone      VARCHAR(20)  NOT NULL COMMENT '手机号',
+    password   VARCHAR(100) NOT NULL COMMENT '密码',
+    nickname   VARCHAR(50)  DEFAULT NULL COMMENT '昵称',
+    avatar_url VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
+    bio        VARCHAR(500) DEFAULT NULL COMMENT '个人简介',
+    is_admin   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否管理员',
+    is_deleted TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否删除',
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
