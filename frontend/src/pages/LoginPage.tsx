@@ -36,38 +36,47 @@ const LoginPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' }}>
-      <Card style={{ width: 400 }}>
-        <Title level={3} style={{ textAlign: 'center', marginBottom: 32 }}>
-          PlayForge 登录
-        </Title>
-        <Form onFinish={onFinish} size="large">
-          <Form.Item
-            name="phone"
-            rules={[
-              { required: true, message: '请输入手机号' },
-              { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' },
-            ]}
+    <>
+      <div className="sf-starfield" />
+      <div className="sf-grid" />
+      <div className="sf-particles" />
+      <div className="sf-auth-page">
+        <Card className="sf-card sf-fade-in" style={{ width: 400 }}>
+          <Title
+            level={3}
+            className="sf-glow-title"
+            style={{ textAlign: 'center', marginBottom: 32, fontSize: 22 }}
           >
-            <Input prefix={<MobileOutlined />} placeholder="手机号" />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            rules={[{ required: true, message: '请输入密码' }]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
-              登录
-            </Button>
-          </Form.Item>
-          <div style={{ textAlign: 'center' }}>
-            还没有账号？<Link to="/register">立即注册</Link>
-          </div>
-        </Form>
-      </Card>
-    </div>
+            PLAYFORGE
+          </Title>
+          <Form onFinish={onFinish} size="large">
+            <Form.Item
+              name="phone"
+              rules={[
+                { required: true, message: '请输入手机号' },
+                { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' },
+              ]}
+            >
+              <Input prefix={<MobileOutlined />} placeholder="手机号" />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              rules={[{ required: true, message: '请输入密码' }]}
+            >
+              <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit" loading={loading} block>
+                登录
+              </Button>
+            </Form.Item>
+            <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+              还没有账号？<Link to="/register" style={{ color: '#00d4ff' }}>立即注册</Link>
+            </div>
+          </Form>
+        </Card>
+      </div>
+    </>
   );
 };
 

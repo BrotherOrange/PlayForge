@@ -47,76 +47,85 @@ const RegisterPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' }}>
-      <Card style={{ width: 440 }}>
-        <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>
-          PlayForge 注册
-        </Title>
-        <Form onFinish={onFinish} size="large" layout="vertical">
-          <Form.Item style={{ textAlign: 'center', marginBottom: 16 }}>
-            <AvatarUpload value={null} onChange={setAvatarKey} />
-          </Form.Item>
-          <Form.Item
-            name="phone"
-            label="手机号"
-            rules={[
-              { required: true, message: '请输入手机号' },
-              { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' },
-            ]}
+    <>
+      <div className="sf-starfield" />
+      <div className="sf-grid" />
+      <div className="sf-particles" />
+      <div className="sf-auth-page">
+        <Card className="sf-card sf-fade-in" style={{ width: 440 }}>
+          <Title
+            level={3}
+            className="sf-glow-title"
+            style={{ textAlign: 'center', marginBottom: 24, fontSize: 22 }}
           >
-            <Input prefix={<MobileOutlined />} placeholder="手机号" />
-          </Form.Item>
-          <Form.Item
-            name="nickname"
-            label="昵称"
-          >
-            <Input placeholder="给自己取个名字吧" maxLength={20} />
-          </Form.Item>
-          <Form.Item
-            name="bio"
-            label="个人简介"
-          >
-            <Input.TextArea placeholder="介绍一下自己吧" maxLength={200} rows={3} />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label="密码"
-            rules={[
-              { required: true, message: '请输入密码' },
-              { min: 6, max: 20, message: '密码长度6-20位' },
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
-          </Form.Item>
-          <Form.Item
-            name="confirmPassword"
-            label="确认密码"
-            dependencies={['password']}
-            rules={[
-              { required: true, message: '请确认密码' },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue('password') === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(new Error('两次输入的密码不一致'));
-                },
-              }),
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="确认密码" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
-              注册
-            </Button>
-          </Form.Item>
-          <div style={{ textAlign: 'center' }}>
-            已有账号？<Link to="/login">去登录</Link>
-          </div>
-        </Form>
-      </Card>
-    </div>
+            PLAYFORGE
+          </Title>
+          <Form onFinish={onFinish} size="large" layout="vertical">
+            <Form.Item style={{ textAlign: 'center', marginBottom: 16 }}>
+              <AvatarUpload value={null} onChange={setAvatarKey} />
+            </Form.Item>
+            <Form.Item
+              name="phone"
+              label="手机号"
+              rules={[
+                { required: true, message: '请输入手机号' },
+                { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' },
+              ]}
+            >
+              <Input prefix={<MobileOutlined />} placeholder="手机号" />
+            </Form.Item>
+            <Form.Item
+              name="nickname"
+              label="昵称"
+            >
+              <Input placeholder="给自己取个名字吧" maxLength={20} />
+            </Form.Item>
+            <Form.Item
+              name="bio"
+              label="个人简介"
+            >
+              <Input.TextArea placeholder="介绍一下自己吧" maxLength={200} rows={3} />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              label="密码"
+              rules={[
+                { required: true, message: '请输入密码' },
+                { min: 6, max: 20, message: '密码长度6-20位' },
+              ]}
+            >
+              <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+            </Form.Item>
+            <Form.Item
+              name="confirmPassword"
+              label="确认密码"
+              dependencies={['password']}
+              rules={[
+                { required: true, message: '请确认密码' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('password') === value) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(new Error('两次输入的密码不一致'));
+                  },
+                }),
+              ]}
+            >
+              <Input.Password prefix={<LockOutlined />} placeholder="确认密码" />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit" loading={loading} block>
+                注册
+              </Button>
+            </Form.Item>
+            <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+              已有账号？<Link to="/login" style={{ color: '#00d4ff' }}>去登录</Link>
+            </div>
+          </Form>
+        </Card>
+      </div>
+    </>
   );
 };
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Outlet } from 'react-router-dom';
+import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { Layout, Dropdown, Avatar, Space, message } from 'antd';
-import { UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { UserOutlined, LogoutOutlined, IdcardOutlined } from '@ant-design/icons';
 import { getProfile } from '../api/user';
 import { logout } from '../api/auth';
 import { getRefreshToken, clearTokens } from '../utils/token';
@@ -11,6 +11,7 @@ const { Header, Content } = Layout;
 
 const AppLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
@@ -35,6 +36,12 @@ const AppLayout = () => {
 
   const menuItems = [
     {
+      key: 'profile',
+      icon: <IdcardOutlined />,
+      label: '个人中心',
+      onClick: () => navigate('/profile'),
+    },
+    {
       key: 'logout',
       icon: <LogoutOutlined />,
       label: '退出登录',
@@ -42,35 +49,51 @@ const AppLayout = () => {
     },
   ];
 
+  const isHomePage = location.pathname === '/';
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: '#fff',
-          padding: '0 24px',
-          borderBottom: '1px solid #f0f0f0',
-        }}
-      >
+    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+      {/* Background layers - always present */}
+      {!isHomePage && (
+        <>
+          <div className="sf-starfield" />
+          <div className="sf-grid" />
+          <div className="sf-particles" />
+        </>
+      )}
+
+      <Header className="sf-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 24px' }}>
         <div
-          style={{ fontSize: 20, fontWeight: 'bold', cursor: 'pointer' }}
+          style={{
+            fontFamily: "'Orbitron', sans-serif",
+            fontSize: 20,
+            fontWeight: 700,
+            cursor: 'pointer',
+            color: '#00d4ff',
+            textShadow: '0 0 10px rgba(0,212,255,0.3)',
+          }}
           onClick={() => navigate('/')}
         >
-          PlayForge
+          PLAYFORGE
         </div>
         <Dropdown menu={{ items: menuItems }} placement="bottomRight">
           <Space style={{ cursor: 'pointer' }}>
             <Avatar
               src={user?.avatarUrl}
               icon={!user?.avatarUrl && <UserOutlined />}
+              style={{
+                border: '1px solid var(--sf-border)',
+                boxShadow: '0 0 8px rgba(0,212,255,0.2)',
+              }}
             />
-            <span>{user?.nickname || user?.phone || '用户'}</span>
+            <span style={{ color: '#e2e8f0' }}>
+              {user?.nickname || user?.phone || '用户'}
+            </span>
           </Space>
         </Dropdown>
       </Header>
-      <Content style={{ padding: '24px', background: '#f5f5f5' }}>
+
+      <Content style={{ paddingTop: isHomePage ? 0 : 64, background: 'transparent' }}>
         <Outlet context={{ user, setUser }} />
       </Content>
     </Layout>

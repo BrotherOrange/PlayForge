@@ -77,7 +77,7 @@ const AvatarUpload = ({ value, onChange }: AvatarUploadProps) => {
       ) : (
         <div>
           {loading ? <LoadingOutlined /> : <PlusOutlined />}
-          <div style={{ marginTop: 8 }}>上传头像</div>
+          <div style={{ marginTop: 8, color: '#94a3b8' }}>上传头像</div>
         </div>
       )}
     </Upload>
