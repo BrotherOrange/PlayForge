@@ -32,6 +32,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Frontend build output copied into Spring Boot ###
+playforge-start/src/main/resources/static/
+
 ### Local secrets ###
 application-local.yaml
 application-local.yml
