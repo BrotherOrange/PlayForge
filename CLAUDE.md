@@ -29,7 +29,20 @@ PlayForge is a full-stack web application with a Spring Boot 3.5 backend (Java 2
 - **Backend:** Spring Boot with Web (REST), WebFlux (reactive), MyBatis (SQL persistence), Spring Data Redis (caching/sessions), and JDBC
 - **Frontend:** React 19 SPA bootstrapped with Create React App, using Jest + React Testing Library for tests
 - **Java package root:** `com.game.playforge`
-- **Deploy scripts:** `deploy/` (currently empty placeholder)
+- **AI/LLM:** LangChain4J 1.11.0 with OpenAI, Anthropic Claude, and Google Gemini providers
+- **Cloud:** Alibaba Cloud ecosystem (OSS for storage, RDS for MySQL, Redis, SAE for deployment)
+- **Database:** MySQL with HikariCP connection pool, MyBatis mapper XMLs at `classpath*:mapper/**/*.xml`
+
+## Deployment
+
+- **Docker:** Multi-stage Dockerfile (Node 20-alpine for frontend build, Eclipse Temurin 25 for backend)
+- **Deploy scripts in `deploy/`:**
+  - `build.sh` — Build Docker image (linux/amd64)
+  - `push.sh` — Push to Alibaba Cloud ACR
+  - `deploy.sh` — Deploy to Alibaba Cloud SAE
+  - `deploy-all.sh` — All-in-one: build + push + deploy
+  - `package.sh` — Build fat JAR with frontend assets bundled into Spring Boot static resources
+- **Config:** `application.yaml` uses `spring.profiles.active=local` by default; production values come from environment variables
 
 ## Maven Multi-Module Structure
 
