@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理器
@@ -52,6 +53,19 @@ public class GlobalExceptionHandler {
         log.warn("参数校验失败, message={}", message);
         return ResponseEntity.status(ResultCode.PARAM_VALIDATION_FAILED.getHttpStatus())
                 .body(ApiResult.fail(ResultCode.PARAM_VALIDATION_FAILED.getCode(), message));
+    }
+
+    /**
+     * 处理静态资源未找到异常（常见于扫描器探测）
+     *
+     * @param e 资源未找到异常
+     * @return 404响应
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResult<Void>> handleNoResourceFound(NoResourceFoundException e) {
+        log.debug("资源未找到: {}", e.getMessage());
+        return ResponseEntity.status(ResultCode.NOT_FOUND.getHttpStatus())
+                .body(ApiResult.fail(ResultCode.NOT_FOUND));
     }
 
     /**
