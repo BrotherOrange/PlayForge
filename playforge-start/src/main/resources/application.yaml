@@ -51,6 +51,11 @@ auth:
     access-token-expire-minutes: 30
     refresh-token-expire-days: 7
 
+logging:
+  level:
+    org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver: ERROR
+    org.apache.coyote.http11.Http11Processor: WARN
+
 langchain4j:
   open-ai:
     chat-model:

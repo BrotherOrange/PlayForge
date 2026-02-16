@@ -8,7 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -54,19 +53,6 @@ public class GlobalExceptionHandler {
         log.warn("参数校验失败, message={}", message);
         return ResponseEntity.status(ResultCode.PARAM_VALIDATION_FAILED.getHttpStatus())
                 .body(ApiResult.fail(ResultCode.PARAM_VALIDATION_FAILED.getCode(), message));
-    }
-
-    /**
-     * 处理请求方法不支持异常（常见于扫描器探测）
-     *
-     * @param e 方法不支持异常
-     * @return 405响应
-     */
-    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ApiResult<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
-        log.debug("请求方法不支持: {}", e.getMessage());
-        return ResponseEntity.status(405)
-                .body(ApiResult.fail(ResultCode.NOT_FOUND));
     }
 
     /**
