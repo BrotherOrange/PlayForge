@@ -36,3 +36,6 @@ build/
 application-local.yaml
 application-local.yml
 application-local.properties
+
+### Deploy secrets ###
+deploy/deploy-all.sh
