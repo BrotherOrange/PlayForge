@@ -3,6 +3,8 @@ package com.game.playforge.api.websocket;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.playforge.application.service.AgentChatAppService;
+import com.game.playforge.application.service.UserService;
+import com.game.playforge.domain.model.User;
 import com.game.playforge.infrastructure.external.auth.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +49,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AgentChatWebSocketHandler extends TextWebSocketHandler {
 
     private final AgentChatAppService agentChatAppService;
+    private final UserService userService;
     private final JwtUtil jwtUtil;
     private final ObjectMapper objectMapper;
 
@@ -80,6 +83,13 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
 
         Long userId = jwtUtil.parseUserId(token);
         Long threadId = Long.parseLong(threadIdStr);
+
+        // 仅管理员可使用聊天
+        User user = userService.getProfile(userId);
+        if (!Boolean.TRUE.equals(user.getIsAdmin())) {
+            session.close(CloseStatus.NOT_ACCEPTABLE.withReason("需要管理员权限"));
+            return;
+        }
 
         session.getAttributes().put(ATTR_USER_ID, userId);
         session.getAttributes().put(ATTR_THREAD_ID, threadId);

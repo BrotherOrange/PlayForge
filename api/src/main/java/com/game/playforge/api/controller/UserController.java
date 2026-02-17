@@ -70,6 +70,7 @@ public class UserController {
         response.setAvatarKey(user.getAvatarUrl());
         response.setAvatarUrl(ossService.generateSignedUrl(user.getAvatarUrl()));
         response.setBio(user.getBio());
+        response.setIsAdmin(Boolean.TRUE.equals(user.getIsAdmin()));
         response.setCreatedAt(user.getCreatedAt());
         return response;
     }

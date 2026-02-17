@@ -63,8 +63,11 @@ public class AgentFactory {
 
         AiServices<AgentChatService> builder = AiServices.builder(AgentChatService.class)
                 .chatModel(chatModel)
-                .chatMemory(memory)
-                .systemMessageProvider(memoryId -> systemPrompt);
+                .chatMemory(memory);
+
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            builder.systemMessageProvider(memoryId -> systemPrompt);
+        }
 
         if (!tools.isEmpty()) {
             builder.tools(tools);
@@ -94,8 +97,11 @@ public class AgentFactory {
 
         AiServices<AgentStreamingChatService> builder = AiServices.builder(AgentStreamingChatService.class)
                 .streamingChatModel(streamingModel)
-                .chatMemory(memory)
-                .systemMessageProvider(memoryId -> systemPrompt);
+                .chatMemory(memory);
+
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            builder.systemMessageProvider(memoryId -> systemPrompt);
+        }
 
         if (!tools.isEmpty()) {
             builder.tools(tools);

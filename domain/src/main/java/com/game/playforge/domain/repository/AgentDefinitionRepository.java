@@ -36,6 +36,14 @@ public interface AgentDefinitionRepository {
     List<AgentDefinition> findAllActive();
 
     /**
+     * 根据用户ID查询启用的Agent定义
+     *
+     * @param userId 用户ID
+     * @return 该用户的Agent定义列表
+     */
+    List<AgentDefinition> findByUserId(Long userId);
+
+    /**
      * 新增Agent定义
      *
      * @param agentDefinition Agent定义实体

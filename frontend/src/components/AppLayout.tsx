@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { Layout, Dropdown, Avatar, Space, message } from 'antd';
-import { UserOutlined, LogoutOutlined, IdcardOutlined } from '@ant-design/icons';
+import { UserOutlined, LogoutOutlined, IdcardOutlined, RobotOutlined } from '@ant-design/icons';
 import { getProfile } from '../api/user';
 import { logout } from '../api/auth';
 import { getRefreshToken, clearTokens } from '../utils/token';
@@ -50,11 +50,12 @@ const AppLayout = () => {
   ];
 
   const isHomePage = location.pathname === '/';
+  const isChatPage = location.pathname === '/chat';
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
-      {/* Background layers - always present */}
-      {!isHomePage && (
+      {/* Background layers - skip on chat page */}
+      {!isHomePage && !isChatPage && (
         <>
           <div className="sf-starfield" />
           <div className="sf-grid" />
@@ -76,6 +77,23 @@ const AppLayout = () => {
         >
           PLAYFORGE
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+          <span
+            style={{
+              fontSize: 13,
+              color: isChatPage ? 'var(--sf-primary)' : 'var(--sf-text-muted)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'color 0.2s',
+            }}
+            onClick={() => navigate('/chat')}
+          >
+            <RobotOutlined /> AI Chat
+          </span>
+        </div>
+
         <Dropdown menu={{ items: menuItems }} placement="bottomRight">
           <Space style={{ cursor: 'pointer' }}>
             <Avatar
@@ -93,7 +111,7 @@ const AppLayout = () => {
         </Dropdown>
       </Header>
 
-      <Content style={{ paddingTop: isHomePage ? 0 : 64, background: 'transparent' }}>
+      <Content style={{ paddingTop: isHomePage ? 0 : 64, background: 'transparent', ...(isChatPage ? { height: 'calc(100vh - 64px)', overflow: 'hidden' } : {}) }}>
         <Outlet context={{ user, setUser }} />
       </Content>
     </Layout>

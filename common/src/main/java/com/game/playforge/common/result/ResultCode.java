@@ -75,6 +75,11 @@ public enum ResultCode {
      */
     NOT_FOUND(4001, "资源不存在", 404),
 
+    /**
+     * 需要管理员权限
+     */
+    ADMIN_REQUIRED(4002, "需要管理员权限，请联系管理员开通", 403),
+
     // ---------- 50xx - Agent相关 ----------
 
     /**
@@ -91,6 +96,11 @@ public enum ResultCode {
      * 无权访问该会话
      */
     THREAD_ACCESS_DENIED(5003, "无权访问该会话", 403),
+
+    /**
+     * 无权操作该Agent
+     */
+    AGENT_ACCESS_DENIED(5006, "无权操作该Agent", 403),
 
     /**
      * AI服务暂不可用

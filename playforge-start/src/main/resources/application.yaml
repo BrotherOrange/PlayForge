@@ -4,6 +4,9 @@ spring:
   profiles:
     active: local
 
+  flyway:
+    ignore-migration-patterns: "*:missing"
+
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:rm-rj9a593mtk0vu1scf.mysql.rds-aliyun-america.rds.aliyuncs.com}:3306/${MYSQL_DB:play-forge}?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC
     username: ${MYSQL_USERNAME:game_root}
@@ -60,10 +63,10 @@ langchain4j:
   open-ai:
     chat-model:
       api-key: ${OPENAI_API_KEY:}
-      model-name: gpt-5.2-pro
+      model-name: gpt-5.2
     streaming-chat-model:
       api-key: ${OPENAI_API_KEY:}
-      model-name: gpt-5.2-pro
+      model-name: gpt-5.2
   anthropic:
     chat-model:
       api-key: ${ANTHROPIC_API_KEY:}

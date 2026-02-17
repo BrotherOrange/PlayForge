@@ -19,5 +19,6 @@ public class AgentDefinitionResponse {
     private String description;
     private String provider;
     private String modelName;
+    private Long threadId;
     private LocalDateTime createdAt;
 }

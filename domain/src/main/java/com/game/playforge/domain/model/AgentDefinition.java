@@ -25,6 +25,11 @@ public class AgentDefinition {
     private Long id;
 
     /**
+     * 所属用户ID
+     */
+    private Long userId;
+
+    /**
      * Agent唯一标识
      */
     private String name;

@@ -56,6 +56,18 @@ public class AgentDefinitionRepositoryImpl implements AgentDefinitionRepository 
     }
 
     @Override
+    public List<AgentDefinition> findByUserId(Long userId) {
+        log.debug("根据用户ID查询Agent定义, userId={}", userId);
+        List<AgentDefinition> definitions = agentDefinitionMapper.selectList(
+                new LambdaQueryWrapper<AgentDefinition>()
+                        .eq(AgentDefinition::getUserId, userId)
+                        .eq(AgentDefinition::getIsActive, true)
+                        .orderByDesc(AgentDefinition::getCreatedAt));
+        log.debug("根据用户ID查询Agent定义, userId={}, count={}", userId, definitions.size());
+        return definitions;
+    }
+
+    @Override
     public void insert(AgentDefinition agentDefinition) {
         log.info("新增Agent定义, name={}", agentDefinition.getName());
         agentDefinitionMapper.insert(agentDefinition);

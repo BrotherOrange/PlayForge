@@ -4,6 +4,7 @@ import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ApiResult;
 import com.game.playforge.common.result.ResultCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -66,6 +67,19 @@ public class GlobalExceptionHandler {
         log.debug("资源未找到: {}", e.getMessage());
         return ResponseEntity.status(ResultCode.NOT_FOUND.getHttpStatus())
                 .body(ApiResult.fail(ResultCode.NOT_FOUND));
+    }
+
+    /**
+     * 处理客户端断连异常（Broken pipe）
+     * <p>
+     * 客户端在响应传输中主动断开连接，无需返回响应体（连接已关闭）。
+     * </p>
+     *
+     * @param e 客户端断连异常
+     */
+    @ExceptionHandler(ClientAbortException.class)
+    public void handleClientAbort(ClientAbortException e) {
+        log.debug("客户端断开连接: {}", e.getMessage());
     }
 
     /**
