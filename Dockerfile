@@ -67,6 +67,7 @@ EXPOSE 8080
 
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 \
     --add-opens=java.base/sun.misc=ALL-UNNAMED \
-    --enable-native-access=ALL-UNNAMED"
+    --enable-native-access=ALL-UNNAMED \
+    -Dlangchain4j.http.clientBuilderFactory=dev.langchain4j.http.client.spring.restclient.SpringRestClientBuilderFactory"
 
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar app.jar --spring.profiles.active=prod"]
