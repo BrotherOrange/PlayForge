@@ -1,0 +1,33 @@
+package com.game.playforge.common.constant;
+
+/**
+ * AI Agent模块常量
+ *
+ * @author Richard Zhang
+ * @since 1.0
+ */
+public final class AgentConstants {
+
+    private AgentConstants() {
+    }
+
+    /**
+     * Redis Key前缀：Agent会话记忆
+     */
+    public static final String MEMORY_PREFIX = "playforge:agent:memory:";
+
+    /**
+     * Redis Key前缀：Agent分布式锁
+     */
+    public static final String LOCK_PREFIX = "playforge:agent:lock:";
+
+    /**
+     * 默认记忆窗口大小（消息条数）
+     */
+    public static final int DEFAULT_MEMORY_WINDOW_SIZE = 20;
+
+    /**
+     * 记忆缓存过期时间（小时）
+     */
+    public static final long MEMORY_TTL_HOURS = 72;
+}
