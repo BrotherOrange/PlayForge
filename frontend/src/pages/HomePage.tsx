@@ -15,22 +15,13 @@ const HomePage = () => {
         <div className="sf-hero-desc">
           探索无限可能的游戏世界，在这里创造、连接、征服。
         </div>
-        <div className="sf-hero-btn-wrapper" style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <Button
-            className="sf-hex-btn"
-            size="large"
-            onClick={() => navigate('/profile')}
-          >
-            进入控制台
-          </Button>
-          <Button
-            className="sf-hex-btn"
-            size="large"
-            onClick={() => navigate('/chat')}
-          >
-            AI CHAT
-          </Button>
-        </div>
+        <Button
+          className="sf-hex-btn"
+          size="large"
+          onClick={() => navigate('/chat')}
+        >
+          AI CHAT
+        </Button>
       </div>
     </>
   );
