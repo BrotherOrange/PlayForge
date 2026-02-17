@@ -1,9 +1,9 @@
 package com.game.playforge.infrastructure.external.ai;
 
 import dev.langchain4j.agent.tool.Tool;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 /**
  * AI工具注册中心
  * <p>
- * 启动时扫描Spring容器中所有包含 {@link Tool} 注解方法的Bean，
+ * 在所有单例Bean创建完成后，扫描Spring容器中所有包含 {@link Tool} 注解方法的Bean，
  * 提供按名称查找工具Bean的能力。
  * </p>
  *
@@ -24,13 +24,13 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class ToolRegistry {
+public class ToolRegistry implements SmartInitializingSingleton {
 
     private final ApplicationContext applicationContext;
     private final Map<String, Object> toolBeans = new LinkedHashMap<>();
 
-    @PostConstruct
-    public void init() {
+    @Override
+    public void afterSingletonsInstantiated() {
         String[] beanNames = applicationContext.getBeanDefinitionNames();
         for (String beanName : beanNames) {
             Object bean = applicationContext.getBean(beanName);
