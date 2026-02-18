@@ -149,7 +149,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
             return Collections.emptyList();
         }
 
-        AsyncTaskManager taskManager = taskManagers.computeIfAbsent(threadId, ignored -> new AsyncTaskManager(3));
+        AsyncTaskManager taskManager = taskManagers.computeIfAbsent(threadId, ignored -> new AsyncTaskManager());
         SubAgentTool subAgentTool = new SubAgentTool(userId, threadId, subAgentService, taskManager);
 
         log.info("已注入SubAgentTool, userId={}, threadId={}", userId, threadId);

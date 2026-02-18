@@ -10,7 +10,8 @@ import java.util.function.Supplier;
  * 异步任务管理器
  * <p>
  * 每会话实例（非Spring Bean），基于BlockingQueue实现高效的异步任务分发与结果收集。
- * 支持"第一个完成即返回"的等待语义。通过Semaphore限制并发API调用数以避免速率限制。
+ * 支持"第一个完成即返回"的等待语义。不限制并发数量，所有任务在虚拟线程上真正并行执行。
+ * 速率限制由SubAgentService的重试逻辑处理。
  * </p>
  *
  * @author Richard Zhang
@@ -19,8 +20,6 @@ import java.util.function.Supplier;
 @Slf4j
 public class AsyncTaskManager {
 
-    private static final int DEFAULT_MAX_CONCURRENT = 2;
-
     public record TaskResult(String threadId, String agentName, String result, boolean isError) {}
 
     private final Map<String, CompletableFuture<String>> pending = new ConcurrentHashMap<>();
@@ -28,21 +27,15 @@ public class AsyncTaskManager {
     private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
     private final BlockingQueue<TaskResult> completed = new LinkedBlockingQueue<>();
     private final ExecutorService executor;
-    private final Semaphore concurrencyLimiter;
 
     public AsyncTaskManager() {
-        this(DEFAULT_MAX_CONCURRENT);
-    }
-
-    public AsyncTaskManager(int maxConcurrent) {
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
-        this.concurrencyLimiter = new Semaphore(maxConcurrent);
     }
 
     /**
      * 分发任务到后台执行
      * <p>
-     * 通过Semaphore限制实际并发执行数，超出的任务排队等待。
+     * 任务在虚拟线程上立即执行，不限制并发数量。
      * </p>
      *
      * @param threadId  子Agent的线程ID
@@ -55,23 +48,7 @@ public class AsyncTaskManager {
         }
         agentNames.put(threadId, agentName);
 
-        // 用Semaphore包装任务以限制并发
-        Supplier<String> throttledTask = () -> {
-            try {
-                concurrencyLimiter.acquire();
-                log.info("获取并发槽位, threadId={}, agent={}", threadId, agentName);
-                try {
-                    return task.get();
-                } finally {
-                    concurrencyLimiter.release();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Task interrupted while waiting for concurrency slot", e);
-            }
-        };
-
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(throttledTask, executor);
+        CompletableFuture<String> future = CompletableFuture.supplyAsync(task, executor);
         pending.put(threadId, future);
 
         future.whenComplete((result, error) -> {
