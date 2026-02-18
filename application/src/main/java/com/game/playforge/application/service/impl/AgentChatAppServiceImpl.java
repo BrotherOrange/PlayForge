@@ -61,6 +61,12 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
     private static final int MAX_RATE_LIMIT_RETRIES = 2;
     private static final long BASE_BACKOFF_MILLIS = 2000L;
+    private static final int STREAM_PERSIST_TOKEN_STEP = 80;
+
+    private static final class StreamPersistenceState {
+        private Long assistantMessageId;
+        private int lastPersistedLength;
+    }
 
     private final AgentFactory agentFactory;
     private final AgentThreadRepository agentThreadRepository;
@@ -130,7 +136,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         return Flux.create(sink -> {
             StringBuilder fullResponse = new StringBuilder();
             StringBuilder fullThinking = new StringBuilder();
-            startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0, false);
+            startStreamingWithRetry(
+                    agent, message, threadId, sink, fullResponse, fullThinking,
+                    0, false, null);
 
             sink.onCancel(() -> {
                 log.info("流式聊天被取消, threadId={}", threadId);
@@ -174,7 +182,10 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
                 StringBuilder fullResponse = new StringBuilder();
                 StringBuilder fullThinking = new StringBuilder();
-                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0, true);
+                StreamPersistenceState persistenceState = new StreamPersistenceState();
+                startStreamingWithRetry(
+                        agent, message, threadId, sink, fullResponse, fullThinking,
+                        0, true, persistenceState);
 
                 sink.onCancel(() -> {
                     log.info("带进度流式聊天被取消, threadId={}", threadId);
@@ -306,6 +317,16 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         agentMessageRepository.insert(assistantMsg);
     }
 
+    private Long saveAssistantMessageReturningId(Long threadId, String assistantContent) {
+        AgentMessage assistantMsg = new AgentMessage();
+        assistantMsg.setThreadId(threadId);
+        assistantMsg.setRole("assistant");
+        assistantMsg.setContent(assistantContent);
+        assistantMsg.setTokenCount(0);
+        agentMessageRepository.insert(assistantMsg);
+        return assistantMsg.getId();
+    }
+
     private void saveToolMessage(Long threadId, String toolName, String content) {
         AgentMessage toolMsg = new AgentMessage();
         toolMsg.setThreadId(threadId);
@@ -330,6 +351,50 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         assistantMsg.setContent(assistantContent);
         assistantMsg.setTokenCount(0);
         agentMessageRepository.insert(assistantMsg);
+    }
+
+    private void persistStreamingAssistantIfNeeded(Long threadId,
+                                                   String fullContent,
+                                                   StreamPersistenceState state) {
+        if (fullContent == null || fullContent.isBlank()) {
+            return;
+        }
+        int currentLength = fullContent.length();
+        if (currentLength - state.lastPersistedLength < STREAM_PERSIST_TOKEN_STEP) {
+            return;
+        }
+        if (state.assistantMessageId == null) {
+            Long messageId = saveAssistantMessageReturningId(threadId, fullContent);
+            if (messageId == null) {
+                return;
+            }
+            state.assistantMessageId = messageId;
+            state.lastPersistedLength = currentLength;
+            updateThreadStats(threadId, 1);
+            return;
+        }
+        agentMessageRepository.updateContentById(state.assistantMessageId, fullContent);
+        state.lastPersistedLength = currentLength;
+    }
+
+    /**
+     * @return 本次完成时是否新增了assistant消息（用于线程消息数递增）
+     */
+    private int persistFinalStreamingAssistant(Long threadId,
+                                               String fullContent,
+                                               StreamPersistenceState state) {
+        if (state.assistantMessageId == null) {
+            Long messageId = saveAssistantMessageReturningId(threadId, fullContent);
+            if (messageId == null) {
+                return 0;
+            }
+            state.assistantMessageId = messageId;
+            state.lastPersistedLength = fullContent.length();
+            return 1;
+        }
+        agentMessageRepository.updateContentById(state.assistantMessageId, fullContent);
+        state.lastPersistedLength = fullContent.length();
+        return 0;
     }
 
     private void updateThreadStats(Long threadId, int messageDelta) {
@@ -363,7 +428,8 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                                          StringBuilder fullResponse,
                                          StringBuilder fullThinking,
                                          int attempt,
-                                         boolean persistWhenClientDisconnected) {
+                                         boolean persistWhenClientDisconnected,
+                                         StreamPersistenceState persistenceState) {
         if (sink.isCancelled() && !persistWhenClientDisconnected) {
             return;
         }
@@ -386,7 +452,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                 }
                 startStreamingWithRetry(
                         agent, message, threadId, sink, fullResponse, fullThinking,
-                        attempt + 1, persistWhenClientDisconnected);
+                        attempt + 1, persistWhenClientDisconnected, persistenceState);
                 return;
             }
             sink.error(error);
@@ -398,6 +464,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                         return;
                     }
                     fullResponse.append(token);
+                    if (persistWhenClientDisconnected && persistenceState != null) {
+                        persistStreamingAssistantIfNeeded(threadId, fullResponse.toString(), persistenceState);
+                    }
                     if (!sink.isCancelled()) {
                         sink.next(AgentStreamEvent.token(token));
                     }
@@ -431,8 +500,13 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                                 saveToolMessage(threadId, AgentStreamEvent.TYPE_THINKING, thinkingToSave);
                                 delta += 1;
                             }
-                            saveAssistantMessage(threadId, fullResponse.toString());
-                            delta += 1;
+                            if (persistWhenClientDisconnected && persistenceState != null) {
+                                delta += persistFinalStreamingAssistant(
+                                        threadId, fullResponse.toString(), persistenceState);
+                            } else {
+                                saveAssistantMessage(threadId, fullResponse.toString());
+                                delta += 1;
+                            }
                             updateThreadStats(threadId, delta);
                         });
                     } catch (Exception e) {
@@ -460,7 +534,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                         }
                         startStreamingWithRetry(
                                 agent, message, threadId, sink, fullResponse, fullThinking,
-                                attempt + 1, persistWhenClientDisconnected);
+                                attempt + 1, persistWhenClientDisconnected, persistenceState);
                         return;
                     }
                     log.error("流式聊天错误, threadId={}", threadId, error);

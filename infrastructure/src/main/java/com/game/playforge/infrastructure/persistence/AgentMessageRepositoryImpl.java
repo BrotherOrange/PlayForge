@@ -1,6 +1,7 @@
 package com.game.playforge.infrastructure.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.game.playforge.domain.model.AgentMessage;
 import com.game.playforge.domain.repository.AgentMessageRepository;
 import com.game.playforge.infrastructure.persistence.mapper.AgentMessageMapper;
@@ -43,6 +44,20 @@ public class AgentMessageRepositoryImpl implements AgentMessageRepository {
             agentMessageMapper.insert(message);
         }
         log.info("批量新增消息成功, count={}", messages.size());
+    }
+
+    @Override
+    public void updateContentById(Long messageId, String content) {
+        if (messageId == null) {
+            return;
+        }
+        log.debug("更新消息内容, messageId={}", messageId);
+        agentMessageMapper.update(
+                null,
+                new LambdaUpdateWrapper<AgentMessage>()
+                        .eq(AgentMessage::getId, messageId)
+                        .set(AgentMessage::getContent, content)
+        );
     }
 
     @Override

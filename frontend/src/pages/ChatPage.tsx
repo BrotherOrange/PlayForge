@@ -486,6 +486,33 @@ const ChatPage = () => {
     return agent.threadId ? (subAgentsMap.get(agent.threadId)?.length ?? 0) > 0 : false;
   };
 
+  const getBubbleClassName = (msg: AgentMessage) => {
+    const classes = ['sf-chat-bubble', msg.role === 'user' ? 'user' : 'assistant'];
+    if (msg.role === 'tool' && msg.toolName === 'thinking') {
+      classes.push('thinking');
+    }
+    if (msg.role === 'tool' && msg.toolName === 'progress') {
+      classes.push('tool-progress');
+    }
+    return classes.join(' ');
+  };
+
+  const getBubbleRoleLabel = (msg: AgentMessage) => {
+    if (msg.role === 'user') return 'You';
+    if (msg.role === 'tool' && msg.toolName === 'progress') return 'Status';
+    if (msg.role === 'tool' && msg.toolName === 'thinking') {
+      return `${selectedAgent?.displayName || 'AI'} Thinking`;
+    }
+    return selectedAgent?.displayName || 'AI';
+  };
+
+  const getBubbleContentClass = (msg: AgentMessage) =>
+    `sf-chat-bubble-content ${
+      msg.role === 'tool' && msg.toolName === 'thinking'
+        ? 'sf-chat-thinking-content'
+        : ''
+    } sf-markdown`;
+
   return (
     <div className="sf-chat-layout">
       {/* Sidebar */}
@@ -673,30 +700,9 @@ const ChatPage = () => {
           )}
 
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`sf-chat-bubble ${
-                msg.role === 'user' ? 'user' : 'assistant'
-              } ${
-                msg.role === 'tool' && msg.toolName === 'thinking' ? 'thinking' : ''
-              }`}
-            >
-              <div className="sf-chat-bubble-role">
-                {msg.role === 'user'
-                  ? 'You'
-                  : msg.role === 'tool' && msg.toolName === 'progress'
-                    ? 'Status'
-                    : msg.role === 'tool' && msg.toolName === 'thinking'
-                      ? `${selectedAgent?.displayName || 'AI'} Thinking`
-                      : selectedAgent?.displayName || 'AI'}
-              </div>
-              <div
-                className={`sf-chat-bubble-content ${
-                  msg.role === 'tool' && msg.toolName === 'thinking'
-                    ? 'sf-chat-thinking-content'
-                    : ''
-                } sf-markdown`}
-              >
+            <div key={msg.id} className={getBubbleClassName(msg)}>
+              <div className="sf-chat-bubble-role">{getBubbleRoleLabel(msg)}</div>
+              <div className={getBubbleContentClass(msg)}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
               </div>
             </div>
@@ -704,30 +710,9 @@ const ChatPage = () => {
 
           {isCurrentThreadStreaming &&
             streamingBubbles.map((msg) => (
-              <div
-                key={msg.id}
-                className={`sf-chat-bubble ${
-                  msg.role === 'user' ? 'user' : 'assistant'
-                } ${
-                  msg.role === 'tool' && msg.toolName === 'thinking' ? 'thinking' : ''
-                }`}
-              >
-                <div className="sf-chat-bubble-role">
-                  {msg.role === 'user'
-                    ? 'You'
-                    : msg.role === 'tool' && msg.toolName === 'progress'
-                      ? 'Status'
-                      : msg.role === 'tool' && msg.toolName === 'thinking'
-                        ? `${selectedAgent?.displayName || 'AI'} Thinking`
-                        : selectedAgent?.displayName || 'AI'}
-                </div>
-                <div
-                  className={`sf-chat-bubble-content ${
-                    msg.role === 'tool' && msg.toolName === 'thinking'
-                      ? 'sf-chat-thinking-content'
-                      : ''
-                  } sf-markdown`}
-                >
+              <div key={msg.id} className={getBubbleClassName(msg)}>
+                <div className="sf-chat-bubble-role">{getBubbleRoleLabel(msg)}</div>
+                <div className={getBubbleContentClass(msg)}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                   {msg.role === 'assistant' && msg.id === lastStreamingAssistantId && (
                     <span className="sf-chat-cursor" />

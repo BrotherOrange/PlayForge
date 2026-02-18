@@ -27,6 +27,14 @@ public interface AgentMessageRepository {
     void insertBatch(List<AgentMessage> messages);
 
     /**
+     * 根据消息ID更新内容
+     *
+     * @param messageId 消息ID
+     * @param content   新内容
+     */
+    void updateContentById(Long messageId, String content);
+
+    /**
      * 根据会话ID查询消息列表（支持分页）
      *
      * @param threadId 会话ID
