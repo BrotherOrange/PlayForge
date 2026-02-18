@@ -159,8 +159,8 @@ public class AgentThreadController {
     /**
      * 带进度的聊天（SSE）
      * <p>
-     * 返回Server-Sent Events流，包含子Agent操作进度和最终响应。
-     * 事件类型：progress（操作进度）、response（最终回答）、done（完成）、error（错误）
+     * 返回Server-Sent Events流，包含子Agent操作进度与Lead Agent流式输出。
+     * 事件类型：token（文本分片）、thinking（思考分片）、progress（操作进度）、error（错误）
      * </p>
      *
      * @param request     HTTP请求

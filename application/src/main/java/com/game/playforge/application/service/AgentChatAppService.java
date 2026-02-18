@@ -35,13 +35,13 @@ public interface AgentChatAppService {
     /**
      * 带进度的聊天（SSE）
      * <p>
-     * 返回进度事件流，包含子Agent操作进度和最终响应。
+     * 返回进度 + 文本流事件，包含子Agent操作进度与Lead Agent token/thinking输出。
      * </p>
      *
      * @param userId   用户ID
      * @param threadId 会话ID
      * @param message  用户消息
-     * @return 流式事件（progress/response/done/error）
+     * @return 流式事件（token/thinking/progress/error）
      */
     Flux<AgentStreamEvent> chatWithProgress(Long userId, Long threadId, String message);
 }

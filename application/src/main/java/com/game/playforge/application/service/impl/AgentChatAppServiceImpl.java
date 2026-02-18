@@ -33,8 +33,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
-import reactor.core.publisher.Sinks;
-
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.time.LocalDateTime;
@@ -148,32 +146,36 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         AgentDefinition definition = getAgentDefinition(thread.getAgentId());
         recoverMemoryIfNeeded(thread, definition);
 
-        Sinks.Many<AgentStreamEvent> sink = Sinks.many().unicast().onBackpressureBuffer();
-        Consumer<AgentStreamEvent> progressCallback = event -> sink.tryEmitNext(event);
-
-        List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
-        AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
-
-        Thread.startVirtualThread(() -> {
-            try {
-                String response = chatWithRetry(agent, message, threadId);
-
-                transactionTemplate.executeWithoutResult(status -> {
-                    saveMessages(threadId, message, response);
-                    updateThreadStats(threadId, 2);
-                });
-
-                sink.tryEmitNext(AgentStreamEvent.response(response));
-                sink.tryEmitNext(AgentStreamEvent.done());
-                sink.tryEmitComplete();
-            } catch (Exception e) {
-                log.error("带进度聊天失败, threadId={}", threadId, e);
-                sink.tryEmitNext(AgentStreamEvent.error(e.getMessage()));
-                sink.tryEmitComplete();
-            }
+        // Save user message first so it is visible while lead agent is still processing.
+        transactionTemplate.executeWithoutResult(status -> {
+            saveUserMessage(threadId, message);
+            updateThreadStats(threadId, 1);
         });
 
-        return sink.asFlux();
+        return Flux.create(sink -> {
+            try {
+                Consumer<AgentStreamEvent> progressCallback = event -> {
+                    if (!sink.isCancelled()) {
+                        sink.next(event);
+                    }
+                };
+
+                List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
+                AgentStreamingChatService agent = agentFactory.createStreamingAgent(
+                        definition, threadId, userId, extraTools);
+
+                StringBuilder fullResponse = new StringBuilder();
+                StringBuilder fullThinking = new StringBuilder();
+                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0);
+
+                sink.onCancel(() -> {
+                    log.info("带进度流式聊天被取消, threadId={}", threadId);
+                });
+            } catch (Exception e) {
+                log.error("带进度聊天失败, threadId={}", threadId, e);
+                sink.error(e);
+            }
+        });
     }
 
     /**

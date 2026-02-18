@@ -616,39 +616,40 @@ const ChatPage = () => {
             </div>
           ))}
 
-          {isCurrentThreadStreaming && (
-            <div className="sf-chat-bubble assistant">
-              <div className="sf-chat-bubble-role">
-                {selectedAgent?.displayName || 'AI'}
-              </div>
-              <div className="sf-chat-bubble-content sf-chat-progress-bubble">
-                {streamProgress.length === 0 ? (
+          {isCurrentThreadStreaming &&
+            streamProgress.map((step, i) => {
+              const isActive = i === streamProgress.length - 1;
+              return (
+                <div key={`progress-${i}`} className="sf-chat-bubble assistant">
+                  <div className="sf-chat-bubble-role">Status</div>
+                  <div className="sf-chat-bubble-content">
+                    <span className="sf-chat-progress-icon" style={{ marginRight: 8 }}>
+                      {isActive ? (
+                        <LoadingOutlined />
+                      ) : (
+                        <span className="sf-chat-progress-check">&#10003;</span>
+                      )}
+                    </span>
+                    <span className="sf-chat-progress-text">{step}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+          {isCurrentThreadStreaming &&
+            streamProgress.length === 0 &&
+            streamingThinking.trim().length === 0 &&
+            streamingAssistantContent.length === 0 && (
+              <div className="sf-chat-bubble assistant">
+                <div className="sf-chat-bubble-role">Status</div>
+                <div className="sf-chat-bubble-content">
                   <div className="sf-chat-typing">
                     <LoadingOutlined style={{ marginRight: 8 }} />
                     Running...
                   </div>
-                ) : (
-                  <div className="sf-chat-progress-list">
-                    {streamProgress.map((step, i) => (
-                      <div
-                        key={i}
-                        className={`sf-chat-progress-step ${i === streamProgress.length - 1 ? 'active' : 'done'}`}
-                      >
-                        <span className="sf-chat-progress-icon">
-                          {i === streamProgress.length - 1 ? (
-                            <LoadingOutlined />
-                          ) : (
-                            <span className="sf-chat-progress-check">&#10003;</span>
-                          )}
-                        </span>
-                        <span className="sf-chat-progress-text">{step}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {isCurrentThreadStreaming && streamingThinking.trim().length > 0 && (
             <div className="sf-chat-bubble assistant thinking">
