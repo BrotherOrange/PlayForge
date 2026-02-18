@@ -1,5 +1,6 @@
 -- Idempotent migration: replace skill_ids with skill_names, drop t_agent_skill table
--- Uses stored procedure because MySQL 8.0 lacks ADD COLUMN IF NOT EXISTS
+-- All operations inside stored procedure for MySQL 8.0 compatibility
+-- (MySQL 8.0 lacks ADD/DROP COLUMN IF [NOT] EXISTS)
 
 DELIMITER //
 
@@ -37,13 +38,19 @@ BEGIN
         WHERE ad.skill_ids IS NOT NULL
           AND ad.skill_ids <> '';
     END IF;
+
+    -- Drop skill_ids column if exists
+    IF has_skill_ids > 0 THEN
+        ALTER TABLE t_agent_definition DROP COLUMN skill_ids;
+    END IF;
+
+    -- Drop t_agent_skill table if exists
+    IF has_skill_table > 0 THEN
+        DROP TABLE t_agent_skill;
+    END IF;
 END //
 
 DELIMITER ;
 
 CALL __v5_migrate();
 DROP PROCEDURE IF EXISTS __v5_migrate;
-
--- Drop old column and table (already idempotent with IF EXISTS)
-ALTER TABLE t_agent_definition DROP COLUMN IF EXISTS skill_ids;
-DROP TABLE IF EXISTS t_agent_skill;
