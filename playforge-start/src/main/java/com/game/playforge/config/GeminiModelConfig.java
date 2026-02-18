@@ -3,6 +3,7 @@ package com.game.playforge.config;
 import com.game.playforge.common.constant.AgentConstants;
 import dev.langchain4j.model.chat.listener.ChatModelListener;
 import dev.langchain4j.model.googleai.GeminiMode;
+import dev.langchain4j.model.googleai.GeminiThinkingConfig;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiStreamingChatModel;
 import org.slf4j.Logger;
@@ -131,6 +132,7 @@ public class GeminiModelConfig {
         String geminiMode = environment.getProperty(prefix + "function-calling-config.gemini-mode");
         String[] allowedNames = environment.getProperty(
                 prefix + "function-calling-config.allowed-function-names", String[].class);
+        GeminiThinkingConfig thinkingConfig = buildThinkingConfig(environment, prefix);
 
         if (builder instanceof GoogleAiGeminiChatModel.GoogleAiGeminiChatModelBuilder chatBuilder) {
             if (StringUtils.hasText(baseUrl)) {
@@ -177,6 +179,7 @@ public class GeminiModelConfig {
             // Critical for Gemini tool calls: preserve and replay thought signatures.
             chatBuilder.sendThinking(Boolean.TRUE);
             chatBuilder.returnThinking(Boolean.TRUE);
+            chatBuilder.thinkingConfig(thinkingConfig);
             return;
         }
 
@@ -222,6 +225,7 @@ public class GeminiModelConfig {
             // Critical for Gemini tool calls: preserve and replay thought signatures.
             streamingBuilder.sendThinking(Boolean.TRUE);
             streamingBuilder.returnThinking(Boolean.TRUE);
+            streamingBuilder.thinkingConfig(thinkingConfig);
             return;
         }
 
@@ -266,5 +270,23 @@ public class GeminiModelConfig {
                 .filter(StringUtils::hasText)
                 .map(String::trim)
                 .toArray(String[]::new);
+    }
+
+    private GeminiThinkingConfig buildThinkingConfig(Environment environment, String prefix) {
+        Boolean includeThoughts = environment.getProperty(
+                prefix + "thinking-config.include-thoughts", Boolean.class, Boolean.TRUE);
+        Integer thinkingBudget = environment.getProperty(
+                prefix + "thinking-config.thinking-budget", Integer.class);
+        String thinkingLevel = environment.getProperty(prefix + "thinking-config.thinking-level");
+
+        GeminiThinkingConfig.Builder builder = GeminiThinkingConfig.builder()
+                .includeThoughts(includeThoughts);
+        if (thinkingBudget != null) {
+            builder.thinkingBudget(thinkingBudget);
+        }
+        if (StringUtils.hasText(thinkingLevel)) {
+            builder.thinkingLevel(thinkingLevel.trim());
+        }
+        return builder.build();
     }
 }

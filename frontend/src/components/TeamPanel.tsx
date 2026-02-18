@@ -144,6 +144,16 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
       });
   }, []);
 
+  const refreshMessagesWithRetry = useCallback(
+    (agentId: string, threadId: string, retries = 1) => {
+      fetchMessages(agentId, threadId, false);
+      for (let i = 1; i <= retries; i += 1) {
+        window.setTimeout(() => fetchMessages(agentId, threadId, false), 450 * i);
+      }
+    },
+    [fetchMessages]
+  );
+
   const toggleCard = useCallback(
     (agent: AgentDefinition) => {
       setCardStates((prev) => {
@@ -320,7 +330,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
         const res = await chatThread(agent.threadId!, draft);
         replaceStreamMessage(res.data.data.content);
         setSending(false);
-        fetchMessages(agent.id, agent.threadId!, false);
+        refreshMessagesWithRetry(agent.id, agent.threadId!, 1);
       } catch {
         message.error('Sub-agent message failed, please retry');
         setCardStates((prev) => {
@@ -371,7 +381,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
           completed = true;
           setSending(false);
           ws.close(1000, 'done');
-          fetchMessages(agent.id, agent.threadId!, false);
+          refreshMessagesWithRetry(agent.id, agent.threadId!, 1);
           return;
         }
         if (payload.type === 'error') {
@@ -400,7 +410,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
         setSending(false);
       }
     };
-  }, [fetchMessages]);
+  }, [refreshMessagesWithRetry]);
 
   const handleComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>, agent: AgentDefinition) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
