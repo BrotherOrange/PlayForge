@@ -30,4 +30,14 @@ public final class AgentConstants {
      * 记忆缓存过期时间（小时）
      */
     public static final long MEMORY_TTL_HOURS = 72;
+
+    /**
+     * Agent默认最大输出Token数
+     */
+    public static final int DEFAULT_MAX_OUTPUT_TOKENS = 32768;
+
+    /**
+     * Anthropic最大输出Token上限
+     */
+    public static final int ANTHROPIC_SAFE_MAX_OUTPUT_TOKENS = 32768;
 }

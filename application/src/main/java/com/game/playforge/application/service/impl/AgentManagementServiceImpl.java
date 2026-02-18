@@ -82,7 +82,7 @@ public class AgentManagementServiceImpl implements AgentManagementService {
         agent.setToolNames(LEAD_AGENT_TOOL_NAMES);
         agent.setMemoryWindowSize(20);
         agent.setTemperature(0.7);
-        agent.setMaxTokens(4096);
+        agent.setMaxTokens(32768);
         agent.setIsActive(true);
         agentDefinitionRepository.insert(agent);
 

@@ -37,5 +37,5 @@ public class CreateAgentRequest {
 
     private Double temperature = 0.7;
 
-    private Integer maxTokens = 4096;
+    private Integer maxTokens = 32768;
 }

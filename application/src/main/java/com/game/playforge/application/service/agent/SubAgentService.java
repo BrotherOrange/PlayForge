@@ -218,6 +218,13 @@ public class SubAgentService {
             if (e.getClass().getSimpleName().equals("RateLimitException")) {
                 return true;
             }
+            String message = e.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("rate_limit") || lower.contains("rate limit")) {
+                    return true;
+                }
+            }
             e = e.getCause();
         }
         return false;

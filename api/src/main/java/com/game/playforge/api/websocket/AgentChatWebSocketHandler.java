@@ -63,6 +63,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
     private static final String ATTR_THREAD_ID = "threadId";
     private static final String ATTR_TRACE_ID = "traceId";
     private static final String GENERIC_ERROR_MESSAGE = "服务异常，请稍后重试";
+    private static final String RATE_LIMIT_ERROR_MESSAGE = "模型请求过于频繁，请稍后重试";
     private final Map<String, Disposable> activeStreams = new ConcurrentHashMap<>();
 
     @Override
@@ -177,7 +178,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
                             },
                             error -> {
                                 log.error("流式聊天错误, sessionId={}", session.getId(), error);
-                                sendErrorSafe(session, GENERIC_ERROR_MESSAGE);
+                                sendErrorSafe(session, resolveErrorMessage(error));
                                 activeStreams.remove(session.getId());
                             },
                             () -> {
@@ -260,6 +261,31 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
         if (traceId != null) {
             MDC.put(AuthConstants.TRACE_ID_MDC_KEY, traceId);
         }
+    }
+
+    private String resolveErrorMessage(Throwable error) {
+        if (isRateLimitError(error)) {
+            return RATE_LIMIT_ERROR_MESSAGE;
+        }
+        return GENERIC_ERROR_MESSAGE;
+    }
+
+    private boolean isRateLimitError(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            if ("RateLimitException".equals(cursor.getClass().getSimpleName())) {
+                return true;
+            }
+            String message = cursor.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("rate_limit") || lower.contains("rate limit")) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
     }
 
     @Override

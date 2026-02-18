@@ -29,6 +29,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Agent聊天应用服务实现
@@ -51,6 +53,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Service
 public class AgentChatAppServiceImpl implements AgentChatAppService {
+
+    private static final int MAX_RATE_LIMIT_RETRIES = 2;
+    private static final long BASE_BACKOFF_MILLIS = 2000L;
 
     private final AgentFactory agentFactory;
     private final AgentThreadRepository agentThreadRepository;
@@ -88,7 +93,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         List<Object> extraTools = buildExtraTools(definition, userId, threadId);
         AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
-        String response = agent.chat(message);
+        String response = chatWithRetry(agent, message, threadId);
 
         transactionTemplate.executeWithoutResult(status -> {
             saveMessages(threadId, message, response);
@@ -110,32 +115,10 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         List<Object> extraTools = buildExtraTools(definition, userId, threadId);
         AgentStreamingChatService agent = agentFactory.createStreamingAgent(definition, threadId, userId, extraTools);
-        TokenStream tokenStream = agent.chat(message);
 
         return Flux.create(sink -> {
             StringBuilder fullResponse = new StringBuilder();
-
-            tokenStream
-                    .onPartialResponse(token -> {
-                        fullResponse.append(token);
-                        sink.next(token);
-                    })
-                    .onCompleteResponse(resp -> {
-                        try {
-                            transactionTemplate.executeWithoutResult(status -> {
-                                saveMessages(threadId, message, fullResponse.toString());
-                                updateThreadStats(threadId, 2);
-                            });
-                        } catch (Exception e) {
-                            log.error("保存消息失败, threadId={}", threadId, e);
-                        }
-                        sink.complete();
-                    })
-                    .onError(error -> {
-                        log.error("流式聊天错误, threadId={}", threadId, error);
-                        sink.error(error);
-                    })
-                    .start();
+            startStreamingWithRetry(agent, message, threadId, sink, fullResponse, 0);
 
             sink.onCancel(() -> {
                 log.info("流式聊天被取消, threadId={}", threadId);
@@ -258,5 +241,135 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
     private void updateThreadStats(Long threadId, int messageDelta) {
         agentThreadRepository.incrementMessageCount(threadId, messageDelta, LocalDateTime.now());
+    }
+
+    private String chatWithRetry(AgentChatService agent, String message, Long threadId) {
+        for (int attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+            try {
+                return agent.chat(message);
+            } catch (Exception e) {
+                if (!isRateLimitError(e) || attempt >= MAX_RATE_LIMIT_RETRIES) {
+                    throw e;
+                }
+                long waitMillis = computeBackoffMillis(attempt);
+                log.warn("同步聊天触发速率限制, threadId={}, 等待{}ms后重试 ({}/{})",
+                        threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
+                if (!sleepQuietly(waitMillis)) {
+                    throw e;
+                }
+            }
+        }
+        throw new IllegalStateException("Unreachable");
+    }
+
+    private void startStreamingWithRetry(AgentStreamingChatService agent,
+                                         String message,
+                                         Long threadId,
+                                         FluxSink<String> sink,
+                                         StringBuilder fullResponse,
+                                         int attempt) {
+        if (sink.isCancelled()) {
+            return;
+        }
+
+        TokenStream tokenStream;
+        try {
+            tokenStream = agent.chat(message);
+        } catch (Exception error) {
+            boolean canRetry = isRateLimitError(error)
+                    && fullResponse.isEmpty()
+                    && attempt < MAX_RATE_LIMIT_RETRIES;
+            if (canRetry) {
+                long waitMillis = computeBackoffMillis(attempt);
+                log.warn("流式聊天初始化触发速率限制, threadId={}, 等待{}ms后重试 ({}/{})",
+                        threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
+                if (!sleepQuietly(waitMillis)) {
+                    sink.error(error);
+                    return;
+                }
+                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, attempt + 1);
+                return;
+            }
+            sink.error(error);
+            return;
+        }
+        tokenStream
+                .onPartialResponse(token -> {
+                    if (sink.isCancelled()) {
+                        return;
+                    }
+                    fullResponse.append(token);
+                    sink.next(token);
+                })
+                .onCompleteResponse(resp -> {
+                    if (sink.isCancelled()) {
+                        return;
+                    }
+                    try {
+                        transactionTemplate.executeWithoutResult(status -> {
+                            saveMessages(threadId, message, fullResponse.toString());
+                            updateThreadStats(threadId, 2);
+                        });
+                    } catch (Exception e) {
+                        log.error("保存消息失败, threadId={}", threadId, e);
+                    }
+                    sink.complete();
+                })
+                .onError(error -> {
+                    if (sink.isCancelled()) {
+                        return;
+                    }
+                    boolean canRetry = isRateLimitError(error)
+                            && fullResponse.isEmpty()
+                            && attempt < MAX_RATE_LIMIT_RETRIES;
+                    if (canRetry) {
+                        long waitMillis = computeBackoffMillis(attempt);
+                        log.warn("流式聊天触发速率限制, threadId={}, 等待{}ms后重试 ({}/{})",
+                                threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
+                        if (!sleepQuietly(waitMillis)) {
+                            sink.error(error);
+                            return;
+                        }
+                        startStreamingWithRetry(agent, message, threadId, sink, fullResponse, attempt + 1);
+                        return;
+                    }
+                    log.error("流式聊天错误, threadId={}", threadId, error);
+                    sink.error(error);
+                })
+                .start();
+    }
+
+    private boolean isRateLimitError(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            if ("RateLimitException".equals(cursor.getClass().getSimpleName())) {
+                return true;
+            }
+            String message = cursor.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("rate_limit") || lower.contains("rate limit")) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
+    private long computeBackoffMillis(int attempt) {
+        long base = (long) Math.pow(2, attempt) * BASE_BACKOFF_MILLIS;
+        long jitter = ThreadLocalRandom.current().nextLong(300, 1200);
+        return base + jitter;
+    }
+
+    private boolean sleepQuietly(long waitMillis) {
+        try {
+            Thread.sleep(waitMillis);
+            return true;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 }

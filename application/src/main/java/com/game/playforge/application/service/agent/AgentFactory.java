@@ -15,6 +15,7 @@ import com.game.playforge.infrastructure.external.ai.ToolRegistry;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.service.AiServices;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +63,8 @@ public class AgentFactory {
 
         ModelProvider provider = resolveProvider(definition.getProvider());
         ChatModel chatModel = modelProviderRegistry.getChatModel(provider);
+        ChatRequestParameters scopedParameters = buildScopedRequestParameters(definition, provider);
+        ChatModel effectiveChatModel = new AgentScopedChatModel(chatModel, scopedParameters);
         List<String> skillNameList = parseSkillNames(definition);
         boolean hasSubAgentTool = hasSubAgentTool(definition);
         String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
@@ -70,7 +73,7 @@ public class AgentFactory {
         List<Object> tools = collectTools(definition, skillNameList, extraTools);
 
         AiServices<AgentChatService> builder = AiServices.builder(AgentChatService.class)
-                .chatModel(chatModel)
+                .chatModel(effectiveChatModel)
                 .chatMemory(memory);
 
         if (systemPrompt != null && !systemPrompt.isBlank()) {
@@ -101,6 +104,9 @@ public class AgentFactory {
 
         ModelProvider provider = resolveProvider(definition.getProvider());
         StreamingChatModel streamingModel = modelProviderRegistry.getStreamingChatModel(provider);
+        ChatRequestParameters scopedParameters = buildScopedRequestParameters(definition, provider);
+        StreamingChatModel effectiveStreamingModel =
+                new AgentScopedStreamingChatModel(streamingModel, scopedParameters);
         List<String> skillNameList = parseSkillNames(definition);
         boolean hasSubAgentTool = hasSubAgentTool(definition);
         String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
@@ -109,7 +115,7 @@ public class AgentFactory {
         List<Object> tools = collectTools(definition, skillNameList, extraTools);
 
         AiServices<AgentStreamingChatService> builder = AiServices.builder(AgentStreamingChatService.class)
-                .streamingChatModel(streamingModel)
+                .streamingChatModel(effectiveStreamingModel)
                 .chatMemory(memory);
 
         if (systemPrompt != null && !systemPrompt.isBlank()) {
@@ -217,6 +223,44 @@ public class AgentFactory {
         }
 
         return tools;
+    }
+
+    private ChatRequestParameters buildScopedRequestParameters(AgentDefinition definition, ModelProvider provider) {
+        var builder = ChatRequestParameters.builder()
+                .modelName(definition.getModelName());
+
+        if (definition.getTemperature() != null) {
+            builder.temperature(definition.getTemperature());
+        }
+
+        Integer resolvedMaxTokens = resolveMaxOutputTokens(definition, provider);
+        if (resolvedMaxTokens != null) {
+            builder.maxOutputTokens(resolvedMaxTokens);
+        }
+
+        return builder.build();
+    }
+
+    private Integer resolveMaxOutputTokens(AgentDefinition definition, ModelProvider provider) {
+        Integer configured = definition.getMaxTokens();
+        if (configured != null && configured <= 0) {
+            log.warn("检测到非法maxTokens, agent={}, maxTokens={}, 将忽略并使用默认值",
+                    definition.getName(), configured);
+            configured = null;
+        }
+
+        if (provider == ModelProvider.ANTHROPIC) {
+            int fallback = AgentConstants.DEFAULT_MAX_OUTPUT_TOKENS;
+            int desired = configured != null ? configured : fallback;
+            int capped = Math.min(desired, AgentConstants.ANTHROPIC_SAFE_MAX_OUTPUT_TOKENS);
+            if (desired != capped) {
+                log.info("Anthropic输出Token上限已收敛, agent={}, desired={}, capped={}",
+                        definition.getName(), desired, capped);
+            }
+            return capped;
+        }
+
+        return configured;
     }
 
     private ModelProvider resolveProvider(String provider) {
