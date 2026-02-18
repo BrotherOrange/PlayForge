@@ -1,5 +1,6 @@
 package com.game.playforge.application.service.agent;
 
+import com.game.playforge.common.constant.AgentConstants;
 import com.game.playforge.common.enums.ThreadStatus;
 import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ResultCode;
@@ -11,6 +12,10 @@ import com.game.playforge.domain.repository.AgentMessageRepository;
 import com.game.playforge.domain.repository.AgentThreadRepository;
 import com.game.playforge.infrastructure.external.ai.AgentTypeRegistry;
 import com.game.playforge.infrastructure.external.ai.AgentTypeRegistry.AgentTypeDescriptor;
+import com.game.playforge.infrastructure.external.ai.RedisChatMemoryStore;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,6 +46,7 @@ public class SubAgentService {
     private final AgentDefinitionRepository agentDefinitionRepository;
     private final AgentThreadRepository agentThreadRepository;
     private final AgentMessageRepository agentMessageRepository;
+    private final RedisChatMemoryStore redisChatMemoryStore;
     private final TransactionTemplate transactionTemplate;
 
     public record SubAgentInfo(String agentName, Long threadId, String type, String displayName) {}
@@ -144,6 +150,10 @@ public class SubAgentService {
         log.info("子Agent聊天, userId={}, parentThreadId={}, threadId={}", userId, parentThreadId, threadId);
         SubAgentContext context = validateSubAgentAccess(userId, parentThreadId, threadId);
         AgentDefinition definition = context.definition();
+        AgentThread thread = context.thread();
+
+        // 恢复Redis记忆（支持多轮对话：如果Redis TTL过期，从DB恢复历史消息）
+        recoverMemoryIfNeeded(thread, definition);
 
         // 先保存用户消息（确保前端能看到已派发的任务）
         transactionTemplate.executeWithoutResult(status -> {
@@ -215,6 +225,45 @@ public class SubAgentService {
             }
         }
         throw new RuntimeException("Unreachable");
+    }
+
+    private void recoverMemoryIfNeeded(AgentThread thread, AgentDefinition definition) {
+        List<ChatMessage> existing = redisChatMemoryStore.getMessages(thread.getId());
+        if (!existing.isEmpty()) {
+            return;
+        }
+        if (thread.getMessageCount() == null || thread.getMessageCount() == 0) {
+            return;
+        }
+
+        log.info("子Agent Redis记忆过期，从MySQL恢复, threadId={}, messageCount={}",
+                thread.getId(), thread.getMessageCount());
+
+        int windowSize = definition.getMemoryWindowSize() != null
+                ? definition.getMemoryWindowSize()
+                : AgentConstants.DEFAULT_MEMORY_WINDOW_SIZE;
+        List<AgentMessage> dbMessages = agentMessageRepository.findLatestByThreadId(
+                thread.getId(), windowSize);
+
+        if (dbMessages.isEmpty()) {
+            return;
+        }
+        Collections.reverse(dbMessages);
+
+        List<ChatMessage> chatMessages = new ArrayList<>();
+        for (AgentMessage msg : dbMessages) {
+            switch (msg.getRole()) {
+                case "user" -> chatMessages.add(UserMessage.from(msg.getContent()));
+                case "assistant" -> chatMessages.add(AiMessage.from(msg.getContent()));
+                default -> log.debug("跳过非user/assistant消息, role={}", msg.getRole());
+            }
+        }
+
+        if (!chatMessages.isEmpty()) {
+            redisChatMemoryStore.updateMessages(thread.getId(), chatMessages);
+            log.info("子Agent Redis记忆恢复完成, threadId={}, recoveredCount={}",
+                    thread.getId(), chatMessages.size());
+        }
     }
 
     private boolean isRateLimitError(Throwable e) {

@@ -4,7 +4,6 @@ import { message, Modal } from 'antd';
 import {
   PlusOutlined,
   SendOutlined,
-  StopOutlined,
   DeleteOutlined,
   RobotOutlined,
   MenuFoldOutlined,
@@ -16,8 +15,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { listAgents, createAgentWithThread, deleteAgent, getMessages } from '../api/chat';
-import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
+import { listAgents, createAgentWithThread, deleteAgent, getMessages, chatThread } from '../api/chat';
 import TeamPanel from '../components/TeamPanel';
 import { getAgentLabel, getAgentColor, getAgentTypeFromName } from '../constants/agentTypes';
 import { AgentDefinition, AgentMessage, UserProfile } from '../types/api';
@@ -50,23 +48,17 @@ const ChatPage = () => {
   const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
-  const [streamingContent, setStreamingContent] = useState('');
-  const [streamingThinking, setStreamingThinking] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [teamPanelOpen, setTeamPanelOpen] = useState(false);
 
-  const streamingRef = useRef('');
-  const thinkingRef = useRef('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const activeThreadId = selectedAgent?.threadId ?? null;
-  const isCurrentThreadStreaming = isStreaming && activeThreadId === streamingThreadId;
 
   // Derived: lead agents (no parentThreadId)
   const leadAgents = useMemo(
@@ -109,18 +101,9 @@ const ChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  const clearStreamingState = useCallback(() => {
-    streamingRef.current = '';
-    thinkingRef.current = '';
-    setStreamingContent('');
-    setStreamingThinking('');
-    setIsStreaming(false);
-    setStreamingThreadId(null);
-  }, []);
-
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingContent, streamingThinking, scrollToBottom]);
+  }, [messages, scrollToBottom]);
 
   // Load agents
   const loadAgents = useCallback(() => {
@@ -128,86 +111,6 @@ const ChatPage = () => {
       .then((res) => setAllAgents(res.data.data))
       .catch(() => message.error('Failed to load conversations'));
   }, []);
-
-  // WebSocket callbacks
-  const onToken = useCallback((content: string) => {
-    streamingRef.current += content;
-    setStreamingContent(streamingRef.current);
-  }, []);
-
-  const onThinking = useCallback((content: string) => {
-    thinkingRef.current += content;
-    setStreamingThinking(thinkingRef.current);
-  }, []);
-
-  const onDone = useCallback(() => {
-    const finalContent = streamingRef.current;
-    const finishedThreadId = streamingThreadId;
-    clearStreamingState();
-
-    if (!finishedThreadId) {
-      loadAgents();
-      return;
-    }
-
-    const tryLoadMessages = (retry: number) => {
-      getMessages(finishedThreadId, 50, 0)
-        .then((res) => {
-          if (activeThreadId === finishedThreadId) {
-            setMessages(res.data.data);
-          }
-
-          const lastMsg = res.data.data[res.data.data.length - 1];
-          const missingAssistantReply = !lastMsg || lastMsg.role === 'user';
-          if (retry > 0 && missingAssistantReply) {
-            window.setTimeout(() => tryLoadMessages(retry - 1), 450);
-          } else if (retry === 0 && missingAssistantReply && finalContent && activeThreadId === finishedThreadId) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: String(Date.now()),
-                role: 'assistant',
-                content: finalContent,
-                toolName: null,
-                tokenCount: 0,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-          }
-        })
-        .catch(() => {
-          if (finalContent && activeThreadId === finishedThreadId) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: String(Date.now()),
-                role: 'assistant',
-                content: finalContent,
-                toolName: null,
-                tokenCount: 0,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-          }
-        });
-    };
-
-    tryLoadMessages(2);
-    loadAgents();
-  }, [activeThreadId, clearStreamingState, loadAgents, streamingThreadId]);
-
-  const onError = useCallback((msg: string) => {
-    message.error(msg);
-    clearStreamingState();
-  }, [clearStreamingState]);
-
-  const { sendMessage: wsSend, cancelStream } = useAgentWebSocket({
-    threadId: activeThreadId,
-    onToken,
-    onThinking,
-    onDone,
-    onError,
-  });
 
   // Initial load
   useEffect(() => {
@@ -257,14 +160,6 @@ const ChatPage = () => {
     setSelectedAgent(savedAgent || fallbackAgent);
   }, [allAgents, selectedAgent]);
 
-  // Poll agents while streaming (to detect sub-agent creation)
-  useEffect(() => {
-    if (!isStreaming) return;
-    loadAgents();
-    const timer = setInterval(loadAgents, 1200);
-    return () => clearInterval(timer);
-  }, [isStreaming, loadAgents]);
-
   // Keep team panel in near-realtime while lead agent is active.
   useEffect(() => {
     if (isSubAgent || !teamPanelOpen || !currentLeadAgent?.threadId) {
@@ -302,11 +197,6 @@ const ChatPage = () => {
   }, [activeThreadId]);
 
   const handleSelectAgent = (agent: AgentDefinition) => {
-    // When switching away from a streaming thread, clear streaming state.
-    // The backend stream continues in background and saves results to DB.
-    if (isStreaming && agent.threadId !== streamingThreadId) {
-      clearStreamingState();
-    }
     setSelectedAgent(agent);
   };
 
@@ -333,7 +223,6 @@ const ChatPage = () => {
       setAllAgents((prev) => [agent, ...prev]);
       setSelectedAgent(agent);
       setMessages([]);
-      clearStreamingState();
     } catch {
       message.error('Failed to create conversation');
     } finally {
@@ -356,7 +245,6 @@ const ChatPage = () => {
       ) {
         setSelectedAgent(null);
         setMessages([]);
-        clearStreamingState();
       }
       setTeamPanelOpen(false);
     } catch {
@@ -364,10 +252,11 @@ const ChatPage = () => {
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const content = inputValue.trim();
-    if (!content || !activeThreadId || isCurrentThreadStreaming) return;
+    if (!content || !activeThreadId || isLoading) return;
 
+    // Optimistically add user message
     setMessages((prev) => [
       ...prev,
       {
@@ -380,16 +269,38 @@ const ChatPage = () => {
       },
     ]);
     setInputValue('');
-    setIsStreaming(true);
-    setStreamingThreadId(activeThreadId);
-    streamingRef.current = '';
-    thinkingRef.current = '';
-    setStreamingContent('');
-    setStreamingThinking('');
-    wsSend(content);
+    setIsLoading(true);
 
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
+    }
+
+    try {
+      const res = await chatThread(activeThreadId, content);
+      const assistantContent = res.data.data.content;
+      // Refresh messages from DB to get accurate IDs and timestamps
+      const msgRes = await getMessages(activeThreadId, 50, 0);
+      setMessages(msgRes.data.data);
+      // If DB hasn't persisted yet, fallback to local append
+      const lastMsg = msgRes.data.data[msgRes.data.data.length - 1];
+      if (!lastMsg || lastMsg.role !== 'assistant') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now()),
+            role: 'assistant',
+            content: assistantContent,
+            toolName: null,
+            tokenCount: 0,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
+      loadAgents();
+    } catch {
+      message.error('Failed to get response, please try again');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -588,7 +499,7 @@ const ChatPage = () => {
             </div>
           )}
 
-          {selectedAgent && messages.length === 0 && !isCurrentThreadStreaming && (
+          {selectedAgent && messages.length === 0 && !isLoading && (
             <div className="sf-chat-welcome">
               <RobotOutlined
                 style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }}
@@ -609,34 +520,7 @@ const ChatPage = () => {
             </div>
           ))}
 
-          {isCurrentThreadStreaming &&
-            streamingThinking.trim().length > 0 && (
-            <div className="sf-chat-bubble assistant thinking">
-              <div className="sf-chat-bubble-role">Thinking</div>
-              <div className="sf-chat-bubble-content sf-markdown sf-chat-thinking-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {streamingThinking}
-                </ReactMarkdown>
-                <span className="sf-chat-cursor" />
-              </div>
-            </div>
-            )}
-
-          {isCurrentThreadStreaming && !!streamingContent && (
-            <div className="sf-chat-bubble assistant">
-              <div className="sf-chat-bubble-role">
-                {selectedAgent?.displayName || 'AI'}
-              </div>
-              <div className="sf-chat-bubble-content sf-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {streamingContent}
-                </ReactMarkdown>
-                <span className="sf-chat-cursor" />
-              </div>
-            </div>
-          )}
-
-          {isCurrentThreadStreaming && !streamingContent && streamingThinking.trim().length === 0 && (
+          {isLoading && (
             <div className="sf-chat-bubble assistant">
               <div className="sf-chat-bubble-role">
                 {selectedAgent?.displayName || 'AI'}
@@ -669,21 +553,15 @@ const ChatPage = () => {
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   rows={1}
-                  disabled={isCurrentThreadStreaming}
+                  disabled={isLoading}
                 />
-                {isCurrentThreadStreaming ? (
-                  <button className="sf-chat-send-btn stop" onClick={cancelStream}>
-                    <StopOutlined />
-                  </button>
-                ) : (
-                  <button
-                    className="sf-chat-send-btn"
-                    onClick={handleSend}
-                    disabled={!inputValue.trim()}
-                  >
-                    <SendOutlined />
-                  </button>
-                )}
+                <button
+                  className="sf-chat-send-btn"
+                  onClick={handleSend}
+                  disabled={!inputValue.trim() || isLoading}
+                >
+                  {isLoading ? <LoadingOutlined /> : <SendOutlined />}
+                </button>
               </div>
             )}
           </div>
