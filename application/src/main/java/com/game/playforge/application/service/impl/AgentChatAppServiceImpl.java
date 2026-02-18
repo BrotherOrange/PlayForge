@@ -42,6 +42,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 
@@ -76,6 +77,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     private final TransactionTemplate transactionTemplate;
     private final SubAgentService subAgentService;
     private final Map<Long, AsyncTaskManager> taskManagers = new ConcurrentHashMap<>();
+    private final Map<Long, CopyOnWriteArrayList<String>> progressEvents = new ConcurrentHashMap<>();
 
     public AgentChatAppServiceImpl(AgentFactory agentFactory,
                                    AgentThreadRepository agentThreadRepository,
@@ -102,17 +104,25 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         recoverMemoryIfNeeded(thread, definition);
 
-        List<Object> extraTools = buildExtraTools(definition, userId, threadId);
-        AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
-        String response = chatWithRetry(agent, message, threadId);
+        CopyOnWriteArrayList<String> progress = new CopyOnWriteArrayList<>();
+        progressEvents.put(threadId, progress);
+        Consumer<AgentStreamEvent> progressCallback = event -> progress.add(event.content());
 
-        transactionTemplate.executeWithoutResult(status -> {
-            saveMessages(threadId, message, response);
-            updateThreadStats(threadId, 2);
-        });
+        try {
+            List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
+            AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
+            String response = chatWithRetry(agent, message, threadId);
 
-        log.info("同步聊天完成, threadId={}, responseLength={}", threadId, response.length());
-        return new AgentChatResponse(threadId, response);
+            transactionTemplate.executeWithoutResult(status -> {
+                saveMessages(threadId, message, response);
+                updateThreadStats(threadId, 2);
+            });
+
+            log.info("同步聊天完成, threadId={}, responseLength={}", threadId, response.length());
+            return new AgentChatResponse(threadId, response);
+        } finally {
+            progressEvents.remove(threadId);
+        }
     }
 
     @Override
@@ -200,6 +210,12 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     /**
      * 构建额外工具列表（如SubAgentTool）
      */
+    @Override
+    public List<String> getProgress(Long threadId) {
+        CopyOnWriteArrayList<String> progress = progressEvents.get(threadId);
+        return progress != null ? new ArrayList<>(progress) : Collections.emptyList();
+    }
+
     private List<Object> buildExtraTools(AgentDefinition definition, Long userId, Long threadId) {
         return buildExtraTools(definition, userId, threadId, null);
     }

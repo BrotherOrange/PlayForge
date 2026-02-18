@@ -157,6 +157,19 @@ public class AgentThreadController {
     }
 
     /**
+     * 获取聊天进度
+     * <p>
+     * 轮询此接口获取同步聊天过程中的子Agent操作进度。聊天结束后返回空列表。
+     * </p>
+     */
+    @GetMapping("/{id}/progress")
+    public ApiResult<List<String>> getProgress(
+            HttpServletRequest request,
+            @PathVariable Long id) {
+        return ApiResult.success(agentChatAppService.getProgress(id));
+    }
+
+    /**
      * 带进度的聊天（SSE）
      * <p>
      * 返回Server-Sent Events流，包含子Agent操作进度与Lead Agent流式输出。

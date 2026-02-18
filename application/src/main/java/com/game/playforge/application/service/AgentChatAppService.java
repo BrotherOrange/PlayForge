@@ -4,6 +4,8 @@ import com.game.playforge.application.dto.AgentChatResponse;
 import com.game.playforge.application.dto.AgentStreamEvent;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
+
 /**
  * Agent聊天应用服务接口
  *
@@ -44,4 +46,12 @@ public interface AgentChatAppService {
      * @return 流式事件（token/thinking/progress/error）
      */
     Flux<AgentStreamEvent> chatWithProgress(Long userId, Long threadId, String message);
+
+    /**
+     * 获取聊天进度事件
+     *
+     * @param threadId 会话ID
+     * @return 进度事件列表（聊天结束后为空）
+     */
+    List<String> getProgress(Long threadId);
 }

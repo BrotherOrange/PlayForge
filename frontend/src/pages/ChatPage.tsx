@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { listAgents, createAgentWithThread, deleteAgent, getMessages, chatThreadSSE } from '../api/chat';
+import { listAgents, createAgentWithThread, deleteAgent, getMessages, chatThread, getChatProgress } from '../api/chat';
 import TeamPanel from '../components/TeamPanel';
 import { getAgentLabel, getAgentColor, getAgentTypeFromName } from '../constants/agentTypes';
 import { AgentDefinition, AgentMessage, UserProfile } from '../types/api';
@@ -46,8 +46,8 @@ const ChatPage = () => {
   const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
-  const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
-  const [streamingBubbles, setStreamingBubbles] = useState<AgentMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -56,13 +56,8 @@ const ChatPage = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const activeThreadIdRef = useRef<string | null>(null);
-  const streamingBubblesRef = useRef<AgentMessage[]>([]);
 
   const activeThreadId = selectedAgent?.threadId ?? null;
-  const isAnyMainStreamRunning = streamingThreadId !== null;
-  const isCurrentThreadStreaming =
-    !!activeThreadId && streamingThreadId === activeThreadId;
 
   // Derived: lead agents (no parentThreadId)
   const leadAgents = useMemo(
@@ -100,36 +95,14 @@ const ChatPage = () => {
   // Whether selected agent is a sub-agent
   const isSubAgent = !!selectedAgent?.parentThreadId;
 
-  const lastStreamingAssistantId = useMemo(() => {
-    for (let i = streamingBubbles.length - 1; i >= 0; i -= 1) {
-      if (streamingBubbles[i].role === 'assistant') {
-        return streamingBubbles[i].id;
-      }
-    }
-    return null;
-  }, [streamingBubbles]);
-
   // Auto-scroll to bottom
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
   useEffect(() => {
-    activeThreadIdRef.current = activeThreadId;
-  }, [activeThreadId]);
-
-  useEffect(() => {
-    streamingBubblesRef.current = streamingBubbles;
-  }, [streamingBubbles]);
-
-  useEffect(() => {
     scrollToBottom();
-  }, [
-    messages,
-    streamingBubbles,
-    isCurrentThreadStreaming,
-    scrollToBottom,
-  ]);
+  }, [messages, progressSteps, scrollToBottom]);
 
   // Load agents
   const loadAgents = useCallback(() => {
@@ -185,15 +158,12 @@ const ChatPage = () => {
     return () => clearInterval(timer);
   }, [isSubAgent, teamPanelOpen, currentLeadAgent?.threadId, loadAgents]);
 
-  // While lead/sub-agent is streaming, refresh agent list so new sub-agents appear immediately.
+  // While loading, refresh agent list so new sub-agents appear immediately.
   useEffect(() => {
-    if (!streamingThreadId) {
-      return;
-    }
-    loadAgents();
-    const timer = window.setInterval(loadAgents, 1200);
+    if (!isLoading) return;
+    const timer = window.setInterval(loadAgents, 2000);
     return () => window.clearInterval(timer);
-  }, [streamingThreadId, loadAgents]);
+  }, [isLoading, loadAgents]);
 
   // Auto-open team panel when sub-agents appear
   useEffect(() => {
@@ -278,25 +248,9 @@ const ChatPage = () => {
     }
   };
 
-  const fetchMessagesWithRetry = useCallback(async (threadId: string, retries = 2) => {
-    let latestMessages: AgentMessage[] = [];
-    for (let i = 0; i <= retries; i += 1) {
-      const res = await getMessages(threadId, 50, 0);
-      latestMessages = res.data.data;
-      const hasAssistantReply = latestMessages.some((msg) => msg.role === 'assistant');
-      if (hasAssistantReply || i === retries) {
-        break;
-      }
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 320 * (i + 1));
-      });
-    }
-    return latestMessages;
-  }, []);
-
   const handleSend = async () => {
     const content = inputValue.trim();
-    if (!content || !activeThreadId || isAnyMainStreamRunning) return;
+    if (!content || !activeThreadId || isLoading) return;
 
     // Optimistically add user message
     setMessages((prev) => [
@@ -311,159 +265,40 @@ const ChatPage = () => {
       },
     ]);
     setInputValue('');
-    setStreamingThreadId(activeThreadId);
-    setStreamingBubbles([]);
-    streamingBubblesRef.current = [];
+    setIsLoading(true);
+    setProgressSteps([]);
 
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
     }
 
+    // Poll progress while waiting for sync chat response
     const sendingThreadId = activeThreadId;
-    let refreshedFromDb = false;
-    try {
-      await chatThreadSSE(sendingThreadId, content, (event) => {
-        const payload = event.content ?? '';
-        switch (event.type) {
-          case 'progress':
-            if (payload) {
-              setStreamingBubbles((prev) => [
-                ...prev,
-                {
-                  id: `tmp-progress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                  role: 'tool',
-                  content: payload,
-                  toolName: 'progress',
-                  tokenCount: 0,
-                  createdAt: new Date().toISOString(),
-                },
-              ]);
-            }
-            break;
-          case 'thinking':
-            if (payload) {
-              setStreamingBubbles((prev) => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'tool' && last.toolName === 'thinking') {
-                  const next = [...prev];
-                  next[next.length - 1] = {
-                    ...last,
-                    content: `${last.content}${payload}`,
-                  };
-                  return next;
-                }
-                return [
-                  ...prev,
-                  {
-                    id: `tmp-thinking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    role: 'tool',
-                    content: payload,
-                    toolName: 'thinking',
-                    tokenCount: 0,
-                    createdAt: new Date().toISOString(),
-                  },
-                ];
-              });
-            }
-            break;
-          case 'token':
-            if (payload) {
-              setStreamingBubbles((prev) => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant') {
-                  const next = [...prev];
-                  next[next.length - 1] = {
-                    ...last,
-                    content: `${last.content}${payload}`,
-                  };
-                  return next;
-                }
-                return [
-                  ...prev,
-                  {
-                    id: `tmp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    role: 'assistant',
-                    content: payload,
-                    toolName: null,
-                    tokenCount: 0,
-                    createdAt: new Date().toISOString(),
-                  },
-                ];
-              });
-            }
-            break;
-          case 'response':
-            if (payload) {
-              setStreamingBubbles((prev) => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant') {
-                  const normalized =
-                    payload.startsWith(last.content) ? payload : `${last.content}${payload}`;
-                  const next = [...prev];
-                  next[next.length - 1] = { ...last, content: normalized };
-                  return next;
-                }
-                return [
-                  ...prev,
-                  {
-                    id: `tmp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    role: 'assistant',
-                    content: payload,
-                    toolName: null,
-                    tokenCount: 0,
-                    createdAt: new Date().toISOString(),
-                  },
-                ];
-              });
-            }
-            break;
-          case 'error':
-            message.error(event.content || 'Failed to get response');
-            break;
-          default:
-            break;
+    const pollTimer = window.setInterval(async () => {
+      try {
+        const res = await getChatProgress(sendingThreadId);
+        const steps = res.data.data;
+        if (steps.length > 0) {
+          setProgressSteps(steps);
         }
-      });
-
-      // Refresh messages from DB to get accurate IDs and timestamps
-      const latestMessages = await fetchMessagesWithRetry(sendingThreadId, 2);
-      const latestLiveAssistant = [...streamingBubblesRef.current]
-        .reverse()
-        .find((m) => m.role === 'assistant');
-      const fallbackContent = latestLiveAssistant?.content.trim() || '';
-      const hasAssistantReplyInDb = latestMessages.some((msg) => msg.role === 'assistant');
-      const mergedMessages =
-        !hasAssistantReplyInDb && fallbackContent
-          ? [
-              ...latestMessages,
-              {
-                id: `tmp-assistant-final-${Date.now()}`,
-                role: 'assistant' as const,
-                content: fallbackContent,
-                toolName: null,
-                tokenCount: 0,
-                createdAt: new Date().toISOString(),
-              },
-            ]
-          : latestMessages;
-
-      if (activeThreadIdRef.current === sendingThreadId) {
-        setMessages(mergedMessages);
+      } catch {
+        // ignore polling errors
       }
-      refreshedFromDb = true;
+    }, 1500);
+
+    try {
+      await chatThread(sendingThreadId, content);
+
+      // Refresh messages from DB
+      const msgRes = await getMessages(sendingThreadId, 50, 0);
+      setMessages(msgRes.data.data);
       loadAgents();
     } catch {
       message.error('Failed to get response, please try again');
     } finally {
-      if (!refreshedFromDb && activeThreadIdRef.current === sendingThreadId) {
-        const fallbackBubbles = streamingBubblesRef.current;
-        if (fallbackBubbles.length > 0) {
-          setMessages((prev) => [...prev, ...fallbackBubbles]);
-        }
-      }
-      setStreamingThreadId(null);
-      setStreamingBubbles([]);
-      streamingBubblesRef.current = [];
+      window.clearInterval(pollTimer);
+      setIsLoading(false);
+      setProgressSteps([]);
     }
   };
 
@@ -485,33 +320,6 @@ const ChatPage = () => {
   const hasSubAgents = (agent: AgentDefinition) => {
     return agent.threadId ? (subAgentsMap.get(agent.threadId)?.length ?? 0) > 0 : false;
   };
-
-  const getBubbleClassName = (msg: AgentMessage) => {
-    const classes = ['sf-chat-bubble', msg.role === 'user' ? 'user' : 'assistant'];
-    if (msg.role === 'tool' && msg.toolName === 'thinking') {
-      classes.push('thinking');
-    }
-    if (msg.role === 'tool' && msg.toolName === 'progress') {
-      classes.push('tool-progress');
-    }
-    return classes.join(' ');
-  };
-
-  const getBubbleRoleLabel = (msg: AgentMessage) => {
-    if (msg.role === 'user') return 'You';
-    if (msg.role === 'tool' && msg.toolName === 'progress') return 'Status';
-    if (msg.role === 'tool' && msg.toolName === 'thinking') {
-      return `${selectedAgent?.displayName || 'AI'} Thinking`;
-    }
-    return selectedAgent?.displayName || 'AI';
-  };
-
-  const getBubbleContentClass = (msg: AgentMessage) =>
-    `sf-chat-bubble-content ${
-      msg.role === 'tool' && msg.toolName === 'thinking'
-        ? 'sf-chat-thinking-content'
-        : ''
-    } sf-markdown`;
 
   return (
     <div className="sf-chat-layout">
@@ -689,7 +497,7 @@ const ChatPage = () => {
             </div>
           )}
 
-          {selectedAgent && messages.length === 0 && !isCurrentThreadStreaming && (
+          {selectedAgent && messages.length === 0 && !isLoading && (
             <div className="sf-chat-welcome">
               <RobotOutlined
                 style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }}
@@ -700,38 +508,49 @@ const ChatPage = () => {
           )}
 
           {messages.map((msg) => (
-            <div key={msg.id} className={getBubbleClassName(msg)}>
-              <div className="sf-chat-bubble-role">{getBubbleRoleLabel(msg)}</div>
-              <div className={getBubbleContentClass(msg)}>
+            <div key={msg.id} className={`sf-chat-bubble ${msg.role}`}>
+              <div className="sf-chat-bubble-role">
+                {msg.role === 'user' ? 'You' : selectedAgent?.displayName || 'AI'}
+              </div>
+              <div className="sf-chat-bubble-content sf-markdown">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
               </div>
             </div>
           ))}
 
-          {isCurrentThreadStreaming &&
-            streamingBubbles.map((msg) => (
-              <div key={msg.id} className={getBubbleClassName(msg)}>
-                <div className="sf-chat-bubble-role">{getBubbleRoleLabel(msg)}</div>
-                <div className={getBubbleContentClass(msg)}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                  {msg.role === 'assistant' && msg.id === lastStreamingAssistantId && (
-                    <span className="sf-chat-cursor" />
-                  )}
-                </div>
+          {isLoading && (
+            <div className="sf-chat-bubble assistant">
+              <div className="sf-chat-bubble-role">
+                {selectedAgent?.displayName || 'AI'}
               </div>
-            ))}
-
-          {isCurrentThreadStreaming && streamingBubbles.length === 0 && (
-              <div className="sf-chat-bubble assistant">
-                <div className="sf-chat-bubble-role">Status</div>
-                <div className="sf-chat-bubble-content">
+              <div className="sf-chat-bubble-content sf-chat-progress-bubble">
+                {progressSteps.length === 0 ? (
                   <div className="sf-chat-typing">
                     <LoadingOutlined style={{ marginRight: 8 }} />
-                    Running...
+                    Thinking...
                   </div>
-                </div>
+                ) : (
+                  <div className="sf-chat-progress-list">
+                    {progressSteps.map((step, i) => (
+                      <div
+                        key={i}
+                        className={`sf-chat-progress-step ${i === progressSteps.length - 1 ? 'active' : 'done'}`}
+                      >
+                        <span className="sf-chat-progress-icon">
+                          {i === progressSteps.length - 1 ? (
+                            <LoadingOutlined />
+                          ) : (
+                            <span className="sf-chat-progress-check">&#10003;</span>
+                          )}
+                        </span>
+                        <span className="sf-chat-progress-text">{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -758,9 +577,9 @@ const ChatPage = () => {
                 <button
                   className="sf-chat-send-btn"
                   onClick={handleSend}
-                  disabled={!inputValue.trim() || isAnyMainStreamRunning}
+                  disabled={!inputValue.trim() || isLoading}
                 >
-                  {isAnyMainStreamRunning ? <LoadingOutlined /> : <SendOutlined />}
+                  {isLoading ? <LoadingOutlined /> : <SendOutlined />}
                 </button>
               </div>
             )}
