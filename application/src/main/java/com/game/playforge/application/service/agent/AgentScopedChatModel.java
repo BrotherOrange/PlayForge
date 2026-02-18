@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Agent级别请求参数包装（同步模型）
@@ -31,21 +32,34 @@ public class AgentScopedChatModel implements ChatModel {
     private final ChatModel delegate;
     private final ChatRequestParameters scopedParameters;
     private final Map<Object, Object> requestAttributes;
+    private final Consumer<ChatResponse> responseInterceptor;
 
     public AgentScopedChatModel(ChatModel delegate,
                                 ChatRequestParameters scopedParameters,
                                 Map<Object, Object> requestAttributes) {
+        this(delegate, scopedParameters, requestAttributes, null);
+    }
+
+    public AgentScopedChatModel(ChatModel delegate,
+                                ChatRequestParameters scopedParameters,
+                                Map<Object, Object> requestAttributes,
+                                Consumer<ChatResponse> responseInterceptor) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         this.scopedParameters = Objects.requireNonNull(scopedParameters, "scopedParameters must not be null");
         this.requestAttributes = requestAttributes == null
                 ? Map.of()
                 : Map.copyOf(new LinkedHashMap<>(requestAttributes));
+        this.responseInterceptor = responseInterceptor;
     }
 
     @Override
     public ChatResponse doChat(ChatRequest chatRequest) {
         ChatRequest sanitizedRequest = sanitizeGeminiToolMessages(chatRequest);
-        return delegate.doChat(sanitizedRequest);
+        ChatResponse response = delegate.doChat(sanitizedRequest);
+        if (responseInterceptor != null) {
+            responseInterceptor.accept(response);
+        }
+        return response;
     }
 
     @Override

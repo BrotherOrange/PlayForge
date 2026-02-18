@@ -179,19 +179,46 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                         }
                     };
 
+                    // Accumulate thinking from all LLM rounds for persistence
+                    StringBuilder accumulatedThinking = new StringBuilder();
+
+                    // Intercept each LLM round's complete response and push to SSE immediately.
+                    // This gives per-round granularity without token-by-token streaming.
+                    Consumer<ChatResponse> responseInterceptor = chatResponse -> {
+                        if (chatResponse.aiMessage() == null || sink.isCancelled()) {
+                            return;
+                        }
+                        String thinking = chatResponse.aiMessage().thinking();
+                        if (thinking != null && !thinking.isBlank()) {
+                            accumulatedThinking.append(thinking).append("\n");
+                            sink.next(AgentStreamEvent.thinking(thinking));
+                        }
+                        String text = chatResponse.aiMessage().text();
+                        if (text != null && !text.isBlank()) {
+                            sink.next(AgentStreamEvent.response(text));
+                        }
+                    };
+
                     List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
-                    AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
+                    AgentChatService agent = agentFactory.createAgent(
+                            definition, threadId, userId, extraTools, responseInterceptor);
                     String response = chatWithRetry(agent, message, threadId);
 
-                    // Persist assistant message
+                    // Persist thinking + final assistant message
+                    String thinkingToSave = accumulatedThinking.toString().trim();
                     transactionTemplate.executeWithoutResult(status -> {
+                        int delta = 0;
+                        if (!thinkingToSave.isBlank()) {
+                            saveToolMessage(threadId, AgentStreamEvent.TYPE_THINKING, thinkingToSave);
+                            delta++;
+                        }
                         saveAssistantMessage(threadId, response);
-                        updateThreadStats(threadId, 1);
+                        delta++;
+                        updateThreadStats(threadId, delta);
                     });
 
-                    // Emit the complete response as a single event (no token-by-token streaming)
+                    // Responses already emitted by responseInterceptor; just signal completion
                     if (!sink.isCancelled()) {
-                        sink.next(AgentStreamEvent.response(response));
                         sink.complete();
                     }
 

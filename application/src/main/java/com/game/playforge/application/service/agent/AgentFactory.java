@@ -17,6 +17,7 @@ import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.AiServices;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -61,13 +63,27 @@ public class AgentFactory {
      */
     public AgentChatService createAgent(AgentDefinition definition, Long threadId,
                                         Long userId, List<Object> extraTools) {
+        return createAgent(definition, threadId, userId, extraTools, null);
+    }
+
+    /**
+     * 创建同步聊天Agent代理（带响应拦截器）
+     * <p>
+     * responseInterceptor 会在每一轮LLM调用返回时被回调，
+     * 包括工具调用链中的中间轮次，可用于实时推送每轮回答。
+     * </p>
+     */
+    public AgentChatService createAgent(AgentDefinition definition, Long threadId,
+                                        Long userId, List<Object> extraTools,
+                                        Consumer<ChatResponse> responseInterceptor) {
         log.info("创建同步Agent, agent={}, threadId={}", definition.getName(), threadId);
 
         ModelProvider provider = resolveProvider(definition.getProvider());
         ChatModel chatModel = modelProviderRegistry.getChatModel(provider);
         ChatRequestParameters scopedParameters = buildScopedRequestParameters(definition, provider);
         Map<Object, Object> requestAttributes = buildRequestAttributes(threadId);
-        ChatModel effectiveChatModel = new AgentScopedChatModel(chatModel, scopedParameters, requestAttributes);
+        ChatModel effectiveChatModel = new AgentScopedChatModel(
+                chatModel, scopedParameters, requestAttributes, responseInterceptor);
         List<String> skillNameList = parseSkillNames(definition);
         boolean hasSubAgentTool = hasSubAgentTool(definition);
         String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
