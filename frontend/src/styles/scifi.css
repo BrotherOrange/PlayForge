@@ -930,6 +930,13 @@
   50% { opacity: 0; }
 }
 
+.sf-chat-typing {
+  color: rgba(148,163,184,0.8);
+  font-style: italic;
+  display: flex;
+  align-items: center;
+}
+
 /* --- Input Area --- */
 .sf-chat-input-area {
   padding: 16px 24px;

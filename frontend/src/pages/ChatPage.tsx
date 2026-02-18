@@ -12,6 +12,7 @@ import {
   LockOutlined,
   TeamOutlined,
   LeftOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -280,13 +281,15 @@ const ChatPage = () => {
     }
   }, [currentSubAgents.length, isSubAgent]);
 
-  // Load messages when selected agent changes
+  // Load messages when selected agent changes.
+  // Skip fetch while streaming on the current thread to preserve the optimistic user message.
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([]);
-      if (!isStreaming) {
-        clearStreamingState();
-      }
+      return;
+    }
+
+    if (isStreaming && activeThreadId === streamingThreadId) {
       return;
     }
 
@@ -299,7 +302,7 @@ const ChatPage = () => {
       });
 
     return () => controller.abort();
-  }, [activeThreadId, clearStreamingState, isStreaming]);
+  }, [activeThreadId, isStreaming, streamingThreadId]);
 
   const handleSelectAgent = (agent: AgentDefinition) => {
     setSelectedAgent(agent);
@@ -607,8 +610,7 @@ const ChatPage = () => {
             </div>
           ))}
 
-          {isStreaming &&
-            activeThreadId === streamingThreadId &&
+          {isCurrentThreadStreaming &&
             streamingThinking.trim().length > 0 && (
             <div className="sf-chat-bubble assistant thinking">
               <div className="sf-chat-bubble-role">Thinking</div>
@@ -621,7 +623,7 @@ const ChatPage = () => {
             </div>
             )}
 
-          {isStreaming && activeThreadId === streamingThreadId && !!streamingContent && (
+          {isCurrentThreadStreaming && !!streamingContent && (
             <div className="sf-chat-bubble assistant">
               <div className="sf-chat-bubble-role">
                 {selectedAgent?.displayName || 'AI'}
@@ -631,6 +633,18 @@ const ChatPage = () => {
                   {streamingContent}
                 </ReactMarkdown>
                 <span className="sf-chat-cursor" />
+              </div>
+            </div>
+          )}
+
+          {isCurrentThreadStreaming && !streamingContent && streamingThinking.trim().length === 0 && (
+            <div className="sf-chat-bubble assistant">
+              <div className="sf-chat-bubble-role">
+                {selectedAgent?.displayName || 'AI'}
+              </div>
+              <div className="sf-chat-bubble-content sf-chat-typing">
+                <LoadingOutlined style={{ marginRight: 8 }} />
+                Generating response...
               </div>
             </div>
           )}
