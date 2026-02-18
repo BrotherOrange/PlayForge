@@ -202,7 +202,7 @@ const ChatPage = () => {
   }, [clearStreamingState]);
 
   const { sendMessage: wsSend, cancelStream } = useAgentWebSocket({
-    threadId: streamingThreadId ?? activeThreadId,
+    threadId: activeThreadId,
     onToken,
     onThinking,
     onDone,
@@ -282,14 +282,10 @@ const ChatPage = () => {
   }, [currentSubAgents.length, isSubAgent]);
 
   // Load messages when selected agent changes.
-  // Skip fetch while streaming on the current thread to preserve the optimistic user message.
+  // Only depends on activeThreadId — streaming state changes should NOT trigger re-fetch.
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([]);
-      return;
-    }
-
-    if (isStreaming && activeThreadId === streamingThreadId) {
       return;
     }
 
@@ -302,13 +298,16 @@ const ChatPage = () => {
       });
 
     return () => controller.abort();
-  }, [activeThreadId, isStreaming, streamingThreadId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId]);
 
   const handleSelectAgent = (agent: AgentDefinition) => {
-    setSelectedAgent(agent);
-    if (!isStreaming) {
+    // When switching away from a streaming thread, clear streaming state.
+    // The backend stream continues in background and saves results to DB.
+    if (isStreaming && agent.threadId !== streamingThreadId) {
       clearStreamingState();
     }
+    setSelectedAgent(agent);
   };
 
   const handleBackToLead = () => {
@@ -367,7 +366,7 @@ const ChatPage = () => {
 
   const handleSend = () => {
     const content = inputValue.trim();
-    if (!content || !activeThreadId || isStreaming) return;
+    if (!content || !activeThreadId || isCurrentThreadStreaming) return;
 
     setMessages((prev) => [
       ...prev,
@@ -670,9 +669,9 @@ const ChatPage = () => {
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   rows={1}
-                  disabled={isStreaming}
+                  disabled={isCurrentThreadStreaming}
                 />
-                {isStreaming ? (
+                {isCurrentThreadStreaming ? (
                   <button className="sf-chat-send-btn stop" onClick={cancelStream}>
                     <StopOutlined />
                   </button>

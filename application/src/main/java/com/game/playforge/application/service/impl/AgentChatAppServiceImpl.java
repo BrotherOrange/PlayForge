@@ -117,6 +117,12 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         recoverMemoryIfNeeded(thread, definition);
 
+        // Save user message immediately so it's visible in DB even if user switches away
+        transactionTemplate.executeWithoutResult(status -> {
+            saveUserMessage(threadId, message);
+            updateThreadStats(threadId, 1);
+        });
+
         List<Object> extraTools = buildExtraTools(definition, userId, threadId);
         AgentStreamingChatService agent = agentFactory.createStreamingAgent(definition, threadId, userId, extraTools);
 
@@ -228,6 +234,24 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         }
     }
 
+    private void saveUserMessage(Long threadId, String userContent) {
+        AgentMessage userMsg = new AgentMessage();
+        userMsg.setThreadId(threadId);
+        userMsg.setRole("user");
+        userMsg.setContent(userContent);
+        userMsg.setTokenCount(0);
+        agentMessageRepository.insert(userMsg);
+    }
+
+    private void saveAssistantMessage(Long threadId, String assistantContent) {
+        AgentMessage assistantMsg = new AgentMessage();
+        assistantMsg.setThreadId(threadId);
+        assistantMsg.setRole("assistant");
+        assistantMsg.setContent(assistantContent);
+        assistantMsg.setTokenCount(0);
+        agentMessageRepository.insert(assistantMsg);
+    }
+
     private void saveMessages(Long threadId, String userContent, String assistantContent) {
         AgentMessage userMsg = new AgentMessage();
         userMsg.setThreadId(threadId);
@@ -327,8 +351,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     emitCompletionFallbackIfNeeded(threadId, sink, fullResponse, fullThinking, resp);
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
-                            saveMessages(threadId, message, fullResponse.toString());
-                            updateThreadStats(threadId, 2);
+                            // User message already saved before stream started
+                            saveAssistantMessage(threadId, fullResponse.toString());
+                            updateThreadStats(threadId, 1);
                         });
                     } catch (Exception e) {
                         log.error("保存消息失败, threadId={}", threadId, e);

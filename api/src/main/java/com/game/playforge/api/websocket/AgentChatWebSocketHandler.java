@@ -65,7 +65,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
     private static final String ATTR_TRACE_ID = "traceId";
     private static final String GENERIC_ERROR_MESSAGE = "服务异常，请稍后重试";
     private static final String RATE_LIMIT_ERROR_MESSAGE = "模型请求过于频繁，请稍后重试";
-    private final Map<String, Disposable> activeStreams = new ConcurrentHashMap<>();
+    private final Map<Long, Disposable> activeStreams = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -160,8 +160,8 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
 
         log.info("WebSocket聊天, sessionId={}, userId={}, threadId={}", session.getId(), userId, threadId);
 
-        // 取消之前的流
-        cancelActiveStream(session.getId());
+        // 取消此线程之前的流（如有）
+        cancelActiveStream(threadId);
 
         try {
             Disposable disposable = agentChatAppService.chatStream(userId, threadId, content)
@@ -184,7 +184,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
                             error -> {
                                 log.error("流式聊天错误, sessionId={}", session.getId(), error);
                                 sendErrorSafe(session, resolveErrorMessage(error));
-                                activeStreams.remove(session.getId());
+                                activeStreams.remove(threadId);
                             },
                             () -> {
                                 try {
@@ -195,11 +195,11 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
                                 } catch (IOException e) {
                                     log.error("发送完成消息失败, sessionId={}", session.getId(), e);
                                 }
-                                activeStreams.remove(session.getId());
+                                activeStreams.remove(threadId);
                             }
                     );
 
-            activeStreams.put(session.getId(), disposable);
+            activeStreams.put(threadId, disposable);
         } catch (Exception e) {
             log.error("启动流式聊天失败, sessionId={}", session.getId(), e);
             sendError(session, GENERIC_ERROR_MESSAGE);
@@ -207,15 +207,18 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
     }
 
     private void handleCancel(WebSocketSession session) {
-        log.info("取消流式聊天, sessionId={}", session.getId());
-        cancelActiveStream(session.getId());
+        Long threadId = (Long) session.getAttributes().get(ATTR_THREAD_ID);
+        log.info("取消流式聊天, sessionId={}, threadId={}", session.getId(), threadId);
+        if (threadId != null) {
+            cancelActiveStream(threadId);
+        }
     }
 
-    private void cancelActiveStream(String sessionId) {
-        Disposable disposable = activeStreams.remove(sessionId);
+    private void cancelActiveStream(Long threadId) {
+        Disposable disposable = activeStreams.remove(threadId);
         if (disposable != null && !disposable.isDisposed()) {
             disposable.dispose();
-            log.debug("已取消活跃流, sessionId={}", sessionId);
+            log.debug("已取消活跃流, threadId={}", threadId);
         }
     }
 
@@ -223,7 +226,8 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         setTraceId(session);
         try {
-            cancelActiveStream(session.getId());
+            // Don't cancel active streams on close — let them complete in background and save to DB.
+            // This allows the frontend to switch threads without losing in-flight results.
             log.info("WebSocket连接关闭, sessionId={}, status={}", session.getId(), status);
         } finally {
             MDC.remove(AuthConstants.TRACE_ID_MDC_KEY);
@@ -234,7 +238,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         setTraceId(session);
         try {
-            cancelActiveStream(session.getId());
+            // Don't cancel active streams — let them complete in background and save to DB.
             if (exception instanceof IOException) {
                 log.warn("WebSocket传输中断, sessionId={}, cause={}", session.getId(), exception.getMessage());
             } else {
