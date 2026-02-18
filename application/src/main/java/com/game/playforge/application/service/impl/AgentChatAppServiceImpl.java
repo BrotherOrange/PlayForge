@@ -42,7 +42,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 
@@ -77,7 +76,6 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     private final TransactionTemplate transactionTemplate;
     private final SubAgentService subAgentService;
     private final Map<Long, AsyncTaskManager> taskManagers = new ConcurrentHashMap<>();
-    private final Map<Long, CopyOnWriteArrayList<String>> progressEvents = new ConcurrentHashMap<>();
 
     public AgentChatAppServiceImpl(AgentFactory agentFactory,
                                    AgentThreadRepository agentThreadRepository,
@@ -104,25 +102,17 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         recoverMemoryIfNeeded(thread, definition);
 
-        CopyOnWriteArrayList<String> progress = new CopyOnWriteArrayList<>();
-        progressEvents.put(threadId, progress);
-        Consumer<AgentStreamEvent> progressCallback = event -> progress.add(event.content());
+        List<Object> extraTools = buildExtraTools(definition, userId, threadId);
+        AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
+        String response = chatWithRetry(agent, message, threadId);
 
-        try {
-            List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
-            AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
-            String response = chatWithRetry(agent, message, threadId);
+        transactionTemplate.executeWithoutResult(status -> {
+            saveMessages(threadId, message, response);
+            updateThreadStats(threadId, 2);
+        });
 
-            transactionTemplate.executeWithoutResult(status -> {
-                saveMessages(threadId, message, response);
-                updateThreadStats(threadId, 2);
-            });
-
-            log.info("同步聊天完成, threadId={}, responseLength={}", threadId, response.length());
-            return new AgentChatResponse(threadId, response);
-        } finally {
-            progressEvents.remove(threadId);
-        }
+        log.info("同步聊天完成, threadId={}, responseLength={}", threadId, response.length());
+        return new AgentChatResponse(threadId, response);
     }
 
     @Override
@@ -158,7 +148,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
     @Override
     public Flux<AgentStreamEvent> chatWithProgress(Long userId, Long threadId, String message) {
-        log.info("带进度聊天, userId={}, threadId={}", userId, threadId);
+        log.info("带进度聊天(非流式), userId={}, threadId={}", userId, threadId);
 
         AgentThread thread = validateAndGetThread(userId, threadId);
         AgentDefinition definition = getAgentDefinition(thread.getAgentId());
@@ -171,51 +161,59 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         });
 
         return Flux.create(sink -> {
-            try {
-                Consumer<AgentStreamEvent> progressCallback = event -> {
-                    if (AgentStreamEvent.TYPE_PROGRESS.equals(event.type())
-                            && event.content() != null
-                            && !event.content().isBlank()) {
-                        transactionTemplate.executeWithoutResult(status -> {
-                            saveToolMessage(threadId, AgentStreamEvent.TYPE_PROGRESS, event.content());
-                            updateThreadStats(threadId, 1);
-                        });
-                    }
+            // Use virtual thread so SSE progress events are pushed in real-time
+            // while the sync chat blocks until complete.
+            Thread.startVirtualThread(() -> {
+                try {
+                    Consumer<AgentStreamEvent> progressCallback = event -> {
+                        if (AgentStreamEvent.TYPE_PROGRESS.equals(event.type())
+                                && event.content() != null
+                                && !event.content().isBlank()) {
+                            transactionTemplate.executeWithoutResult(status -> {
+                                saveToolMessage(threadId, AgentStreamEvent.TYPE_PROGRESS, event.content());
+                                updateThreadStats(threadId, 1);
+                            });
+                        }
+                        if (!sink.isCancelled()) {
+                            sink.next(event);
+                        }
+                    };
+
+                    List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
+                    AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
+                    String response = chatWithRetry(agent, message, threadId);
+
+                    // Persist assistant message
+                    transactionTemplate.executeWithoutResult(status -> {
+                        saveAssistantMessage(threadId, response);
+                        updateThreadStats(threadId, 1);
+                    });
+
+                    // Emit the complete response as a single event (no token-by-token streaming)
                     if (!sink.isCancelled()) {
-                        sink.next(event);
+                        sink.next(AgentStreamEvent.response(response));
+                        sink.complete();
                     }
-                };
 
-                List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
-                AgentStreamingChatService agent = agentFactory.createStreamingAgent(
-                        definition, threadId, userId, extraTools);
+                    log.info("带进度聊天完成, threadId={}, responseLength={}", threadId, response.length());
+                } catch (Exception e) {
+                    log.error("带进度聊天失败, threadId={}", threadId, e);
+                    if (!sink.isCancelled()) {
+                        sink.next(AgentStreamEvent.error(e.getMessage()));
+                        sink.complete();
+                    }
+                }
+            });
 
-                StringBuilder fullResponse = new StringBuilder();
-                StringBuilder fullThinking = new StringBuilder();
-                StreamPersistenceState persistenceState = new StreamPersistenceState();
-                startStreamingWithRetry(
-                        agent, message, threadId, sink, fullResponse, fullThinking,
-                        0, true, persistenceState);
-
-                sink.onCancel(() -> {
-                    log.info("带进度流式聊天被取消, threadId={}", threadId);
-                });
-            } catch (Exception e) {
-                log.error("带进度聊天失败, threadId={}", threadId, e);
-                sink.error(e);
-            }
+            sink.onCancel(() -> {
+                log.info("带进度聊天被取消, threadId={}", threadId);
+            });
         });
     }
 
     /**
      * 构建额外工具列表（如SubAgentTool）
      */
-    @Override
-    public List<String> getProgress(Long threadId) {
-        CopyOnWriteArrayList<String> progress = progressEvents.get(threadId);
-        return progress != null ? new ArrayList<>(progress) : Collections.emptyList();
-    }
-
     private List<Object> buildExtraTools(AgentDefinition definition, Long userId, Long threadId) {
         return buildExtraTools(definition, userId, threadId, null);
     }

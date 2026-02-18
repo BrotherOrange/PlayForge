@@ -44,9 +44,6 @@ export const chatThread = (threadId: string, message: string) =>
     { timeout: 300_000 }
   );
 
-export const getChatProgress = (threadId: string) =>
-  client.get<ApiResponse<string[]>>(`/agent-threads/${threadId}/progress`);
-
 /**
  * SSE-based chat with progress events.
  * Streams token/thinking/progress/response/done/error events from the server.
