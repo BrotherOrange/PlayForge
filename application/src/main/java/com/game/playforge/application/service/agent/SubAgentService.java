@@ -16,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -194,11 +196,13 @@ public class SubAgentService {
             try {
                 return agent.chat(message);
             } catch (Exception e) {
-                if (isRateLimitError(e) && attempt < MAX_RETRIES) {
-                    long waitSeconds = (long) Math.pow(2, attempt) * BASE_BACKOFF_SECONDS
-                            + ThreadLocalRandom.current().nextInt(10);
-                    log.warn("速率限制, threadId={}, 等待{}秒后重试 ({}/{})",
-                            threadId, waitSeconds, attempt + 1, MAX_RETRIES);
+                boolean rateLimit = isRateLimitError(e);
+                boolean transientNetwork = isTransientNetworkError(e);
+                if ((rateLimit || transientNetwork) && attempt < MAX_RETRIES) {
+                    long waitSeconds = computeBackoffSeconds(attempt, rateLimit);
+                    String reason = rateLimit ? "速率限制" : "上游网络超时";
+                    log.warn("{}, threadId={}, 等待{}秒后重试 ({}/{})",
+                            reason, threadId, waitSeconds, attempt + 1, MAX_RETRIES);
                     try {
                         Thread.sleep(waitSeconds * 1000);
                     } catch (InterruptedException ie) {
@@ -230,6 +234,40 @@ public class SubAgentService {
         return false;
     }
 
+    private boolean isTransientNetworkError(Throwable e) {
+        while (e != null) {
+            if (e instanceof SocketTimeoutException
+                    || e instanceof IOException) {
+                return true;
+            }
+            String simpleName = e.getClass().getSimpleName();
+            if ("ResourceAccessException".equals(simpleName)
+                    || "ReadTimeoutException".equals(simpleName)
+                    || "ConnectTimeoutException".equals(simpleName)) {
+                return true;
+            }
+            String message = e.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("i/o error")
+                        || lower.contains("readtimeout")
+                        || lower.contains("timeout")) {
+                    return true;
+                }
+            }
+            e = e.getCause();
+        }
+        return false;
+    }
+
+    private long computeBackoffSeconds(int attempt, boolean rateLimit) {
+        long base = rateLimit ? BASE_BACKOFF_SECONDS : 3L;
+        long jitter = rateLimit
+                ? ThreadLocalRandom.current().nextInt(10)
+                : ThreadLocalRandom.current().nextInt(3);
+        return (long) Math.pow(2, attempt) * base + jitter;
+    }
+
     private String extractErrorMessage(Throwable e) {
         // 提取最内层原因的简短消息
         Throwable root = e;
@@ -239,6 +277,9 @@ public class SubAgentService {
         String msg = root.getMessage();
         if (msg != null && msg.contains("rate_limit")) {
             return "Rate limit exceeded. The task will be retried automatically.";
+        }
+        if (isTransientNetworkError(e)) {
+            return "Upstream model timeout. Please retry.";
         }
         return msg != null ? msg : e.getClass().getSimpleName();
     }

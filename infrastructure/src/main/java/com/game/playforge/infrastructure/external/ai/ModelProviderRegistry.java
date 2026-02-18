@@ -41,7 +41,7 @@ public class ModelProviderRegistry {
     private ChatModel anthropicChatModel;
 
     @Autowired(required = false)
-    @Qualifier("googleAiGeminiChatModel")
+    @Qualifier("playforgeGeminiChatModel")
     private ChatModel geminiChatModel;
 
     @Autowired(required = false)
@@ -53,7 +53,7 @@ public class ModelProviderRegistry {
     private StreamingChatModel anthropicStreamingChatModel;
 
     @Autowired(required = false)
-    @Qualifier("googleAiGeminiStreamingChatModel")
+    @Qualifier("playforgeGeminiStreamingChatModel")
     private StreamingChatModel geminiStreamingChatModel;
 
     @PostConstruct

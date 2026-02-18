@@ -30,7 +30,7 @@ public class AgentObservabilityListener implements ChatModelListener {
 
     @Override
     public void onRequest(ChatModelRequestContext context) {
-        String traceId = MDC.get(AuthConstants.TRACE_ID_MDC_KEY);
+        String traceId = resolveTraceId(context.attributes());
         if (traceId != null && !traceId.isBlank()) {
             context.attributes().put(TRACE_ID_ATTR_KEY, traceId);
         }

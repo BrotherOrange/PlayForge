@@ -1,6 +1,7 @@
 package com.game.playforge.application.service.agent;
 
 import com.game.playforge.common.constant.AgentConstants;
+import com.game.playforge.common.constant.AuthConstants;
 import com.game.playforge.common.enums.ModelProvider;
 import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ResultCode;
@@ -19,6 +20,7 @@ import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.service.AiServices;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -64,7 +66,8 @@ public class AgentFactory {
         ModelProvider provider = resolveProvider(definition.getProvider());
         ChatModel chatModel = modelProviderRegistry.getChatModel(provider);
         ChatRequestParameters scopedParameters = buildScopedRequestParameters(definition, provider);
-        ChatModel effectiveChatModel = new AgentScopedChatModel(chatModel, scopedParameters);
+        Map<Object, Object> requestAttributes = buildRequestAttributes(threadId);
+        ChatModel effectiveChatModel = new AgentScopedChatModel(chatModel, scopedParameters, requestAttributes);
         List<String> skillNameList = parseSkillNames(definition);
         boolean hasSubAgentTool = hasSubAgentTool(definition);
         String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
@@ -105,8 +108,9 @@ public class AgentFactory {
         ModelProvider provider = resolveProvider(definition.getProvider());
         StreamingChatModel streamingModel = modelProviderRegistry.getStreamingChatModel(provider);
         ChatRequestParameters scopedParameters = buildScopedRequestParameters(definition, provider);
+        Map<Object, Object> requestAttributes = buildRequestAttributes(threadId);
         StreamingChatModel effectiveStreamingModel =
-                new AgentScopedStreamingChatModel(streamingModel, scopedParameters);
+                new AgentScopedStreamingChatModel(streamingModel, scopedParameters, requestAttributes);
         List<String> skillNameList = parseSkillNames(definition);
         boolean hasSubAgentTool = hasSubAgentTool(definition);
         String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
@@ -261,6 +265,17 @@ public class AgentFactory {
         }
 
         return configured;
+    }
+
+    private Map<Object, Object> buildRequestAttributes(Long threadId) {
+        Map<Object, Object> attributes = new HashMap<>();
+        String traceId = MDC.get(AuthConstants.TRACE_ID_MDC_KEY);
+        if (traceId == null || traceId.isBlank()) {
+            traceId = "thread-" + threadId;
+        }
+        attributes.put(AuthConstants.TRACE_ID_MDC_KEY, traceId);
+        attributes.put("threadId", threadId);
+        return attributes;
     }
 
     private ModelProvider resolveProvider(String provider) {
