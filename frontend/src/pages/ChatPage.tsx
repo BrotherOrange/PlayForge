@@ -121,7 +121,29 @@ const ChatPage = () => {
 
   const onDone = useCallback(() => {
     const finalContent = streamingRef.current;
-    if (finalContent) {
+    streamingRef.current = '';
+    setStreamingContent('');
+    setIsStreaming(false);
+
+    if (activeThreadId) {
+      getMessages(activeThreadId, 50, 0)
+        .then((res) => setMessages(res.data.data))
+        .catch(() => {
+          if (finalContent) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: String(Date.now()),
+                role: 'assistant',
+                content: finalContent,
+                toolName: null,
+                tokenCount: 0,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+          }
+        });
+    } else if (finalContent) {
       setMessages((prev) => [
         ...prev,
         {
@@ -134,11 +156,8 @@ const ChatPage = () => {
         },
       ]);
     }
-    streamingRef.current = '';
-    setStreamingContent('');
-    setIsStreaming(false);
     loadAgents();
-  }, [loadAgents]);
+  }, [activeThreadId, loadAgents]);
 
   const onError = useCallback((msg: string) => {
     message.error(msg);
@@ -162,9 +181,19 @@ const ChatPage = () => {
   // Poll agents while streaming (to detect sub-agent creation)
   useEffect(() => {
     if (!isStreaming) return;
-    const timer = setInterval(loadAgents, 4000);
+    loadAgents();
+    const timer = setInterval(loadAgents, 1200);
     return () => clearInterval(timer);
   }, [isStreaming, loadAgents]);
+
+  // Keep team panel in near-realtime while lead agent is active.
+  useEffect(() => {
+    if (isSubAgent || !teamPanelOpen || !currentLeadAgent?.threadId) {
+      return;
+    }
+    const timer = setInterval(loadAgents, 2000);
+    return () => clearInterval(timer);
+  }, [isSubAgent, teamPanelOpen, currentLeadAgent?.threadId, loadAgents]);
 
   // Auto-open team panel when sub-agents appear
   useEffect(() => {
@@ -554,7 +583,6 @@ const ChatPage = () => {
       {teamPanelOpen && !isSubAgent && currentSubAgents.length > 0 && (
         <TeamPanel
           subAgents={currentSubAgents}
-          onSelectAgent={handleSelectAgent}
           onClose={() => setTeamPanelOpen(false)}
         />
       )}

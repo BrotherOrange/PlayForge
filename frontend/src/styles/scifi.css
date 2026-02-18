@@ -1183,6 +1183,10 @@
   border-top: 1px solid var(--sf-border);
   padding: 10px 12px;
   animation: sf-team-slide-in 0.2s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
 }
 
 .sf-subagent-loading,
@@ -1199,7 +1203,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 2px;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .sf-subagent-msg {
@@ -1245,25 +1252,64 @@
 .sf-subagent-msg-content.sf-markdown h3 { font-size: 13px; margin: 4px 0 2px; }
 
 /* --- Sub-Agent Chat Button --- */
-.sf-subagent-chat-btn {
+.sf-subagent-composer {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px;
-  background: transparent;
-  border: 1px dashed var(--sf-border);
-  border-radius: 6px;
-  color: var(--sf-text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
+  gap: 8px;
 }
 
-.sf-subagent-chat-btn:hover {
+.sf-subagent-input {
+  flex: 1;
+  min-height: 34px;
+  max-height: 120px;
+  resize: vertical;
+  padding: 8px 10px;
+  background: rgba(10,14,23,0.85);
+  border: 1px solid var(--sf-border);
+  border-radius: 6px;
+  color: var(--sf-text);
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.sf-subagent-input:focus {
+  border-color: var(--sf-primary);
+}
+
+.sf-subagent-input::placeholder {
+  color: var(--sf-text-muted);
+  opacity: 0.6;
+}
+
+.sf-subagent-input:disabled {
+  opacity: 0.6;
+}
+
+.sf-subagent-send-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--sf-border);
+  border-radius: 6px;
+  background: rgba(17,24,39,0.9);
+  color: var(--sf-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.sf-subagent-send-btn:hover:not(:disabled) {
   border-color: var(--sf-primary);
   color: var(--sf-primary);
+}
+
+.sf-subagent-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* --- Team Toggle Button (in chat header) --- */

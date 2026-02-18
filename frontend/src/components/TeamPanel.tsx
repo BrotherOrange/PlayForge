@@ -1,23 +1,57 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, KeyboardEvent } from 'react';
 import {
   TeamOutlined,
   RightOutlined,
   DownOutlined,
-  MessageOutlined,
   LoadingOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
+import { message } from 'antd';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getMessages } from '../api/chat';
+import { chatThread, getMessages } from '../api/chat';
 import { getAgentShortLabel, getAgentColor } from '../constants/agentTypes';
-import { AgentDefinition, AgentMessage } from '../types/api';
+import { getAccessToken } from '../utils/token';
+import { AgentDefinition, AgentMessage, WsServerMessage } from '../types/api';
+
+const normalizeBaseUrl = (url: string): string => url.replace(/\/+$/, '');
+
+const toWebSocketBase = (url: string): string => {
+  if (url.startsWith('http://')) {
+    return `ws://${url.slice('http://'.length)}`;
+  }
+  if (url.startsWith('https://')) {
+    return `wss://${url.slice('https://'.length)}`;
+  }
+  return url;
+};
+
+const resolveWebSocketBaseUrl = (): string => {
+  const wsBase = process.env.REACT_APP_WS_BASE_URL?.trim();
+  if (wsBase) {
+    return normalizeBaseUrl(toWebSocketBase(wsBase));
+  }
+
+  const apiBase = process.env.REACT_APP_API_BASE_URL?.trim();
+  if (apiBase) {
+    return normalizeBaseUrl(toWebSocketBase(apiBase));
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  if (process.env.NODE_ENV === 'development') {
+    const backendHost = process.env.REACT_APP_DEV_BACKEND_HOST?.trim() || window.location.hostname;
+    const backendPort = process.env.REACT_APP_DEV_BACKEND_PORT?.trim() || '8080';
+    return `${protocol}://${backendHost}:${backendPort}`;
+  }
+
+  return `${protocol}://${window.location.host}`;
+};
 
 interface TeamPanelProps {
   subAgents: AgentDefinition[];
-  onSelectAgent: (agent: AgentDefinition) => void;
   onClose: () => void;
 }
 
@@ -26,12 +60,28 @@ interface SubAgentCardState {
   messages: AgentMessage[];
   loading: boolean;
   loaded: boolean;
+  inputValue: string;
+  sending: boolean;
 }
 
-const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
+const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
   const [cardStates, setCardStates] = useState<Record<string, SubAgentCardState>>({});
   const cardStatesRef = useRef(cardStates);
+  const messageContainerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const streamSocketsRef = useRef<Record<string, WebSocket | null>>({});
+
   cardStatesRef.current = cardStates;
+
+  useEffect(() => {
+    return () => {
+      Object.values(streamSocketsRef.current).forEach((socket) => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.close(1000, 'panel-unmount');
+        }
+      });
+      streamSocketsRef.current = {};
+    };
+  }, []);
 
   // Reset card states when sub-agents change
   useEffect(() => {
@@ -43,35 +93,51 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
           messages: [],
           loading: false,
           loaded: false,
+          inputValue: '',
+          sending: false,
         };
       }
       return next;
     });
   }, [subAgents]);
 
-  // Fetch messages for a specific agent
-  const fetchMessages = useCallback((agentId: string, threadId: string) => {
-    setCardStates((p) => ({
-      ...p,
-      [agentId]: { ...p[agentId], loading: true },
-    }));
-    getMessages(threadId, 20, 0)
+  const fetchMessages = useCallback((agentId: string, threadId: string, showLoading = false) => {
+    setCardStates((p) => {
+      const current = p[agentId];
+      if (!current) return p;
+      if (!showLoading && current.sending) return p;
+      return {
+        ...p,
+        [agentId]: { ...current, loading: showLoading || current.loading },
+      };
+    });
+
+    getMessages(threadId, 50, 0)
       .then((res) => {
-        setCardStates((p) => ({
-          ...p,
-          [agentId]: {
-            ...p[agentId],
-            messages: res.data.data,
-            loading: false,
-            loaded: true,
-          },
-        }));
+        setCardStates((p) => {
+          const current = p[agentId];
+          if (!current) return p;
+          if (!showLoading && current.sending) return p;
+          return {
+            ...p,
+            [agentId]: {
+              ...current,
+              messages: res.data.data,
+              loading: false,
+              loaded: true,
+            },
+          };
+        });
       })
       .catch(() => {
-        setCardStates((p) => ({
-          ...p,
-          [agentId]: { ...p[agentId], loading: false, loaded: true },
-        }));
+        setCardStates((p) => {
+          const current = p[agentId];
+          if (!current) return p;
+          return {
+            ...p,
+            [agentId]: { ...current, loading: false, loaded: true },
+          };
+        });
       });
   }, []);
 
@@ -82,10 +148,8 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
         if (!current) return prev;
         const willExpand = !current.expanded;
 
-        // Trigger async fetch outside the updater on first expand
         if (willExpand && !current.loaded && agent.threadId) {
-          // Schedule fetch after state update
-          setTimeout(() => fetchMessages(agent.id, agent.threadId!), 0);
+          setTimeout(() => fetchMessages(agent.id, agent.threadId!, true), 0);
         }
 
         return {
@@ -97,39 +161,230 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
     [fetchMessages]
   );
 
-  // Stable key for expanded agent IDs (avoids timer rebuild on every message fetch)
-  const expandedAgentKey = useMemo(() => {
-    return subAgents
-      .filter((a) => cardStates[a.id]?.expanded && a.threadId)
-      .map((a) => a.id)
-      .join(',');
+  // Poll all sub-agent messages so card status/preview refresh right after task dispatch.
+  useEffect(() => {
+    if (subAgents.length === 0) return;
+
+    const refresh = () => {
+      for (const agent of subAgents) {
+        if (agent.threadId) {
+          fetchMessages(agent.id, agent.threadId, false);
+        }
+      }
+    };
+
+    refresh();
+    const timer = setInterval(refresh, 2000);
+    return () => clearInterval(timer);
+  }, [subAgents, fetchMessages]);
+
+  // Keep expanded message list pinned to bottom.
+  useEffect(() => {
+    for (const agent of subAgents) {
+      const state = cardStates[agent.id];
+      if (!state?.expanded) continue;
+      const container = messageContainerRefs.current[agent.id];
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
   }, [subAgents, cardStates]);
 
-  // Refresh messages for expanded cards periodically
-  useEffect(() => {
-    if (!expandedAgentKey) return;
+  const updateDraft = useCallback((agentId: string, value: string) => {
+    setCardStates((prev) => {
+      const current = prev[agentId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [agentId]: { ...current, inputValue: value },
+      };
+    });
+  }, []);
 
-    const timer = setInterval(() => {
-      const currentStates = cardStatesRef.current;
-      for (const agent of subAgents) {
-        if (!agent.threadId || !currentStates[agent.id]?.expanded) continue;
-        getMessages(agent.threadId, 20, 0)
-          .then((res) => {
-            setCardStates((prev) => ({
-              ...prev,
-              [agent.id]: {
-                ...prev[agent.id],
-                messages: res.data.data,
-                loaded: true,
-              },
-            }));
-          })
-          .catch(() => {});
+  const sendMessageToSubAgent = useCallback(async (agent: AgentDefinition) => {
+    if (!agent.threadId) return;
+
+    const state = cardStatesRef.current[agent.id];
+    const draft = state?.inputValue?.trim() || '';
+    if (!draft || state?.sending) {
+      return;
+    }
+
+    const optimisticUserMsg: AgentMessage = {
+      id: `tmp-user-${Date.now()}`,
+      role: 'user',
+      content: draft,
+      toolName: null,
+      tokenCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    const streamAssistantMsgId = `tmp-assistant-stream-${Date.now()}`;
+    const streamingAssistantMsg: AgentMessage = {
+      id: streamAssistantMsgId,
+      role: 'assistant',
+      content: '',
+      toolName: null,
+      tokenCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    setCardStates((prev) => {
+      const current = prev[agent.id];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [agent.id]: {
+          ...current,
+          expanded: true,
+          loaded: true,
+          sending: true,
+          inputValue: '',
+          messages: [...current.messages, optimisticUserMsg, streamingAssistantMsg],
+        },
+      };
+    });
+
+    const setSending = (sending: boolean) => {
+      setCardStates((prev) => {
+        const current = prev[agent.id];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [agent.id]: {
+            ...current,
+            sending,
+          },
+        };
+      });
+    };
+
+    const replaceStreamMessage = (content: string) => {
+      setCardStates((prev) => {
+        const current = prev[agent.id];
+        if (!current) return prev;
+        const nextMessages = current.messages.map((msg) =>
+          msg.id === streamAssistantMsgId ? { ...msg, content } : msg
+        );
+        return {
+          ...prev,
+          [agent.id]: {
+            ...current,
+            messages: nextMessages,
+          },
+        };
+      });
+    };
+
+    const appendStreamToken = (token: string) => {
+      setCardStates((prev) => {
+        const current = prev[agent.id];
+        if (!current) return prev;
+        const nextMessages = current.messages.map((msg) =>
+          msg.id === streamAssistantMsgId ? { ...msg, content: `${msg.content}${token}` } : msg
+        );
+        return {
+          ...prev,
+          [agent.id]: {
+            ...current,
+            messages: nextMessages,
+          },
+        };
+      });
+    };
+
+    const fallbackToSyncChat = async () => {
+      try {
+        const res = await chatThread(agent.threadId!, draft);
+        replaceStreamMessage(res.data.data.content);
+        setSending(false);
+        fetchMessages(agent.id, agent.threadId!, false);
+      } catch {
+        message.error('Sub-agent message failed, please retry');
+        setCardStates((prev) => {
+          const current = prev[agent.id];
+          if (!current) return prev;
+          return {
+            ...prev,
+            [agent.id]: {
+              ...current,
+              sending: false,
+              inputValue: draft,
+            },
+          };
+        });
       }
-    }, 5000);
+    };
 
-    return () => clearInterval(timer);
-  }, [expandedAgentKey, subAgents]);
+    const token = getAccessToken();
+    if (!token) {
+      await fallbackToSyncChat();
+      return;
+    }
+
+    const existingSocket = streamSocketsRef.current[agent.id];
+    if (existingSocket && existingSocket.readyState === WebSocket.OPEN) {
+      existingSocket.close(1000, 'new-message');
+    }
+
+    const wsBaseUrl = resolveWebSocketBaseUrl();
+    const wsUrl = `${wsBaseUrl}/ws/agent-chat?threadId=${encodeURIComponent(agent.threadId)}`;
+
+    let completed = false;
+    const ws = new WebSocket(wsUrl, ['bearer', token]);
+    streamSocketsRef.current[agent.id] = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'message', content: draft }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as WsServerMessage;
+        if (payload.type === 'token') {
+          appendStreamToken(payload.content || '');
+          return;
+        }
+        if (payload.type === 'done') {
+          completed = true;
+          setSending(false);
+          ws.close(1000, 'done');
+          fetchMessages(agent.id, agent.threadId!, false);
+          return;
+        }
+        if (payload.type === 'error') {
+          completed = true;
+          message.error(payload.content || 'Sub-agent stream error');
+          ws.close(1002, 'stream-error');
+          fallbackToSyncChat();
+        }
+      } catch {
+        // ignore non-json payloads
+      }
+    };
+
+    ws.onerror = () => {
+      if (completed) return;
+      completed = true;
+      ws.close(1002, 'socket-error');
+      fallbackToSyncChat();
+    };
+
+    ws.onclose = () => {
+      if (streamSocketsRef.current[agent.id] === ws) {
+        streamSocketsRef.current[agent.id] = null;
+      }
+      if (!completed) {
+        setSending(false);
+      }
+    };
+  }, [fetchMessages]);
+
+  const handleComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>, agent: AgentDefinition) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      sendMessageToSubAgent(agent);
+    }
+  };
 
   if (subAgents.length === 0) return null;
 
@@ -149,8 +404,11 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
           const isExpanded = state?.expanded ?? false;
           const messages = state?.messages ?? [];
           const isLoading = state?.loading ?? false;
+          const isSending = state?.sending ?? false;
+          const inputValue = state?.inputValue ?? '';
           const hasMessages = messages.length > 0;
           const lastMessage = hasMessages ? messages[messages.length - 1] : null;
+          const isWorking = isSending || lastMessage?.role === 'user';
           const color = getAgentColor(agent.name);
 
           return (
@@ -158,7 +416,6 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
               key={agent.id}
               className={`sf-subagent-card ${isExpanded ? 'expanded' : ''}`}
             >
-              {/* Card header */}
               <div
                 className="sf-subagent-card-header"
                 onClick={() => toggleCard(agent)}
@@ -171,10 +428,10 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
                   {agent.name.split('-').pop()}
                 </span>
                 <span className="sf-subagent-status">
-                  {hasMessages ? (
-                    <CheckCircleOutlined style={{ color: '#34d399', fontSize: 12 }} />
-                  ) : (
+                  {isWorking ? (
                     <ClockCircleOutlined style={{ color: '#f59e0b', fontSize: 12 }} />
+                  ) : (
+                    <CheckCircleOutlined style={{ color: '#34d399', fontSize: 12 }} />
                   )}
                 </span>
                 <span className="sf-subagent-expand-icon">
@@ -182,7 +439,6 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
                 </span>
               </div>
 
-              {/* Last message preview (when collapsed) */}
               {!isExpanded && lastMessage && (
                 <div className="sf-subagent-preview">
                   {lastMessage.content.slice(0, 80)}
@@ -190,7 +446,6 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
                 </div>
               )}
 
-              {/* Expanded conversation */}
               {isExpanded && (
                 <div className="sf-subagent-card-body">
                   {isLoading && (
@@ -204,7 +459,12 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
                   )}
 
                   {!isLoading && messages.length > 0 && (
-                    <div className="sf-subagent-messages">
+                    <div
+                      className="sf-subagent-messages"
+                      ref={(el) => {
+                        messageContainerRefs.current[agent.id] = el;
+                      }}
+                    >
                       {messages.map((msg) => (
                         <div key={msg.id} className={`sf-subagent-msg ${msg.role}`}>
                           <div className="sf-subagent-msg-role">
@@ -220,15 +480,24 @@ const TeamPanel = ({ subAgents, onSelectAgent, onClose }: TeamPanelProps) => {
                     </div>
                   )}
 
-                  <button
-                    className="sf-subagent-chat-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectAgent(agent);
-                    }}
-                  >
-                    <MessageOutlined /> Open Full Chat
-                  </button>
+                  <div className="sf-subagent-composer" onClick={(e) => e.stopPropagation()}>
+                    <textarea
+                      className="sf-subagent-input"
+                      placeholder="Type a task to this sub-agent..."
+                      rows={1}
+                      value={inputValue}
+                      disabled={isSending}
+                      onChange={(e) => updateDraft(agent.id, e.target.value)}
+                      onKeyDown={(e) => handleComposerKeyDown(e, agent)}
+                    />
+                    <button
+                      className="sf-subagent-send-btn"
+                      onClick={() => sendMessageToSubAgent(agent)}
+                      disabled={!inputValue.trim() || isSending}
+                    >
+                      {isSending ? <LoadingOutlined /> : <SendOutlined />}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

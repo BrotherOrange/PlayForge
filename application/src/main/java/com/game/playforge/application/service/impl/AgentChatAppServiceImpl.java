@@ -23,6 +23,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.service.TokenStream;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -309,6 +310,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     if (sink.isCancelled()) {
                         return;
                     }
+                    emitCompletionFallbackIfNeeded(threadId, sink, fullResponse, resp);
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
                             saveMessages(threadId, message, fullResponse.toString());
@@ -342,6 +344,43 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     sink.error(error);
                 })
                 .start();
+    }
+
+    /**
+     * 某些模型在工具调用链中可能不触发partial token，仅在complete响应里携带文本。
+     * 这里做统一兜底，避免前端出现“无响应”。
+     */
+    private void emitCompletionFallbackIfNeeded(Long threadId,
+                                                FluxSink<String> sink,
+                                                StringBuilder fullResponse,
+                                                ChatResponse completeResponse) {
+        if (!fullResponse.isEmpty()) {
+            return;
+        }
+
+        String completionText = extractCompletionText(completeResponse);
+        if (!completionText.isBlank()) {
+            fullResponse.append(completionText);
+            sink.next(completionText);
+            return;
+        }
+
+        AsyncTaskManager taskManager = taskManagers.get(threadId);
+        if (taskManager != null && taskManager.pendingCount() > 0) {
+            String progressHint = String.format(
+                    "已派发 %d 个子Agent任务，正在处理中。请稍候，我会继续汇总结果。",
+                    taskManager.pendingCount());
+            fullResponse.append(progressHint);
+            sink.next(progressHint);
+        }
+    }
+
+    private String extractCompletionText(ChatResponse completeResponse) {
+        if (completeResponse == null || completeResponse.aiMessage() == null) {
+            return "";
+        }
+        String text = completeResponse.aiMessage().text();
+        return text == null ? "" : text.trim();
     }
 
     private boolean isRetryableError(Throwable throwable) {
