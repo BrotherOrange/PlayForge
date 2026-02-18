@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.game.playforge.application.service.AgentChatAppService;
 import com.game.playforge.application.service.UserService;
+import com.game.playforge.common.constant.AuthConstants;
 import com.game.playforge.domain.model.User;
 import com.game.playforge.infrastructure.external.auth.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.SubProtocolCapable;
@@ -22,6 +24,7 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -58,11 +61,23 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
 
     private static final String ATTR_USER_ID = "userId";
     private static final String ATTR_THREAD_ID = "threadId";
+    private static final String ATTR_TRACE_ID = "traceId";
     private static final String GENERIC_ERROR_MESSAGE = "服务异常，请稍后重试";
     private final Map<String, Disposable> activeStreams = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        String traceId = UUID.randomUUID().toString().replace("-", "");
+        session.getAttributes().put(ATTR_TRACE_ID, traceId);
+        MDC.put(AuthConstants.TRACE_ID_MDC_KEY, traceId);
+        try {
+            doAfterConnectionEstablished(session);
+        } finally {
+            MDC.remove(AuthConstants.TRACE_ID_MDC_KEY);
+        }
+    }
+
+    private void doAfterConnectionEstablished(WebSocketSession session) throws Exception {
         URI uri = session.getUri();
         if (uri == null) {
             session.close(CloseStatus.BAD_DATA.withReason("缺少URI"));
@@ -110,21 +125,26 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        Long userId = (Long) session.getAttributes().get(ATTR_USER_ID);
-        Long threadId = (Long) session.getAttributes().get(ATTR_THREAD_ID);
+        setTraceId(session);
+        try {
+            Long userId = (Long) session.getAttributes().get(ATTR_USER_ID);
+            Long threadId = (Long) session.getAttributes().get(ATTR_THREAD_ID);
 
-        if (userId == null || threadId == null) {
-            sendError(session, "未认证");
-            return;
-        }
+            if (userId == null || threadId == null) {
+                sendError(session, "未认证");
+                return;
+            }
 
-        JsonNode node = objectMapper.readTree(message.getPayload());
-        String type = node.has("type") ? node.get("type").asText() : "";
+            JsonNode node = objectMapper.readTree(message.getPayload());
+            String type = node.has("type") ? node.get("type").asText() : "";
 
-        switch (type) {
-            case "message" -> handleChatMessage(session, userId, threadId, node);
-            case "cancel" -> handleCancel(session);
-            default -> sendError(session, "未知消息类型: " + type);
+            switch (type) {
+                case "message" -> handleChatMessage(session, userId, threadId, node);
+                case "cancel" -> handleCancel(session);
+                default -> sendError(session, "未知消息类型: " + type);
+            }
+        } finally {
+            MDC.remove(AuthConstants.TRACE_ID_MDC_KEY);
         }
     }
 
@@ -195,17 +215,27 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        cancelActiveStream(session.getId());
-        log.info("WebSocket连接关闭, sessionId={}, status={}", session.getId(), status);
+        setTraceId(session);
+        try {
+            cancelActiveStream(session.getId());
+            log.info("WebSocket连接关闭, sessionId={}, status={}", session.getId(), status);
+        } finally {
+            MDC.remove(AuthConstants.TRACE_ID_MDC_KEY);
+        }
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
-        cancelActiveStream(session.getId());
-        if (exception instanceof IOException) {
-            log.warn("WebSocket传输中断, sessionId={}, cause={}", session.getId(), exception.getMessage());
-        } else {
-            log.error("WebSocket传输错误, sessionId={}", session.getId(), exception);
+        setTraceId(session);
+        try {
+            cancelActiveStream(session.getId());
+            if (exception instanceof IOException) {
+                log.warn("WebSocket传输中断, sessionId={}, cause={}", session.getId(), exception.getMessage());
+            } else {
+                log.error("WebSocket传输错误, sessionId={}", session.getId(), exception);
+            }
+        } finally {
+            MDC.remove(AuthConstants.TRACE_ID_MDC_KEY);
         }
     }
 
@@ -222,6 +252,13 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
             sendError(session, errorMessage);
         } catch (IOException e) {
             log.error("发送错误消息失败, sessionId={}", session.getId(), e);
+        }
+    }
+
+    private void setTraceId(WebSocketSession session) {
+        String traceId = (String) session.getAttributes().get(ATTR_TRACE_ID);
+        if (traceId != null) {
+            MDC.put(AuthConstants.TRACE_ID_MDC_KEY, traceId);
         }
     }
 
