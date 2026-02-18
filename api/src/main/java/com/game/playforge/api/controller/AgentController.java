@@ -6,6 +6,9 @@ import com.game.playforge.api.dto.request.CreateSkillRequest;
 import com.game.playforge.api.dto.response.AgentDefinitionResponse;
 import com.game.playforge.api.dto.response.AgentThreadResponse;
 import com.game.playforge.api.dto.response.CreateAgentWithThreadResponse;
+import com.game.playforge.api.mapper.AgentDefinitionMapper;
+import com.game.playforge.api.mapper.AgentSkillMapper;
+import com.game.playforge.api.mapper.AgentThreadMapper;
 import com.game.playforge.application.service.AgentManagementService;
 import com.game.playforge.application.service.AgentManagementService.AgentWithThread;
 import com.game.playforge.application.service.UserService;
@@ -41,6 +44,9 @@ public class AgentController {
     private final AgentManagementService agentManagementService;
     private final AgentThreadRepository agentThreadRepository;
     private final UserService userService;
+    private final AgentDefinitionMapper agentDefinitionMapper;
+    private final AgentThreadMapper agentThreadMapper;
+    private final AgentSkillMapper agentSkillMapper;
 
     private void requireAdmin(Long userId) {
         User user = userService.getProfile(userId);
@@ -70,7 +76,7 @@ public class AgentController {
     public ApiResult<AgentDefinitionResponse> getAgent(@PathVariable Long id) {
         log.info("获取Agent详情, id={}", id);
         AgentDefinition agent = agentManagementService.getAgent(id);
-        return ApiResult.success(toResponse(agent));
+        return ApiResult.success(agentDefinitionMapper.toResponse(agent));
     }
 
     /**
@@ -83,21 +89,9 @@ public class AgentController {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         requireAdmin(userId);
         log.info("创建Agent, userId={}, name={}", userId, createRequest.getName());
-        AgentDefinition definition = new AgentDefinition();
-        definition.setName(createRequest.getName());
-        definition.setDisplayName(createRequest.getDisplayName());
-        definition.setDescription(createRequest.getDescription());
-        definition.setSystemPrompt(createRequest.getSystemPrompt());
-        definition.setSystemPromptRef(createRequest.getSystemPromptRef());
-        definition.setProvider(createRequest.getProvider());
-        definition.setModelName(createRequest.getModelName());
-        definition.setToolNames(createRequest.getToolNames());
-        definition.setSkillIds(createRequest.getSkillIds());
-        definition.setMemoryWindowSize(createRequest.getMemoryWindowSize());
-        definition.setTemperature(createRequest.getTemperature());
-        definition.setMaxTokens(createRequest.getMaxTokens());
+        AgentDefinition definition = agentDefinitionMapper.fromCreateRequest(createRequest);
         AgentDefinition created = agentManagementService.createAgent(userId, definition);
-        return ApiResult.success(toResponse(created));
+        return ApiResult.success(agentDefinitionMapper.toResponse(created));
     }
 
     /**
@@ -114,11 +108,12 @@ public class AgentController {
         AgentWithThread result = agentManagementService.createAgentWithThread(
                 userId, createRequest.getProvider(), createRequest.getModelName(), createRequest.getDisplayName());
 
+        AgentDefinitionResponse agentResponse = agentDefinitionMapper.toResponse(result.agent());
+        agentResponse.setThreadId(result.thread().getId());
+
         CreateAgentWithThreadResponse response = new CreateAgentWithThreadResponse();
-        response.setAgent(toResponse(result.agent()));
-        response.setThread(toThreadResponse(result.thread()));
-        // 设置 threadId 到 agent 响应中
-        response.getAgent().setThreadId(result.thread().getId());
+        response.setAgent(agentResponse);
+        response.setThread(agentThreadMapper.toResponse(result.thread()));
         return ApiResult.success(response);
     }
 
@@ -140,47 +135,17 @@ public class AgentController {
     @PostMapping("/skills")
     public ApiResult<AgentSkill> createSkill(@Valid @RequestBody CreateSkillRequest request) {
         log.info("创建技能, name={}", request.getName());
-        AgentSkill skill = new AgentSkill();
-        skill.setName(request.getName());
-        skill.setDisplayName(request.getDisplayName());
-        skill.setDescription(request.getDescription());
-        skill.setPromptFragment(request.getPromptFragment());
-        skill.setToolNames(request.getToolNames());
+        AgentSkill skill = agentSkillMapper.fromCreateRequest(request);
         AgentSkill created = agentManagementService.createSkill(skill);
         return ApiResult.success(created);
     }
 
-    private AgentDefinitionResponse toResponse(AgentDefinition agent) {
-        AgentDefinitionResponse response = new AgentDefinitionResponse();
-        response.setId(agent.getId());
-        response.setName(agent.getName());
-        response.setDisplayName(agent.getDisplayName());
-        response.setDescription(agent.getDescription());
-        response.setProvider(agent.getProvider());
-        response.setModelName(agent.getModelName());
-        response.setCreatedAt(agent.getCreatedAt());
-        return response;
-    }
-
     private AgentDefinitionResponse toResponseWithThread(AgentDefinition agent, Long userId) {
-        AgentDefinitionResponse response = toResponse(agent);
-        // 查出该 Agent 最新的 active thread
+        AgentDefinitionResponse response = agentDefinitionMapper.toResponse(agent);
         List<AgentThread> threads = agentThreadRepository.findByUserIdAndAgentId(userId, agent.getId());
         if (!threads.isEmpty()) {
             response.setThreadId(threads.getFirst().getId());
         }
-        return response;
-    }
-
-    private AgentThreadResponse toThreadResponse(AgentThread thread) {
-        AgentThreadResponse response = new AgentThreadResponse();
-        response.setId(thread.getId());
-        response.setAgentId(thread.getAgentId());
-        response.setTitle(thread.getTitle());
-        response.setStatus(thread.getStatus());
-        response.setMessageCount(thread.getMessageCount());
-        response.setLastMessageAt(thread.getLastMessageAt());
-        response.setCreatedAt(thread.getCreatedAt());
         return response;
     }
 }

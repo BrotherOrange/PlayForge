@@ -5,6 +5,8 @@ import com.game.playforge.api.dto.request.CreateThreadRequest;
 import com.game.playforge.api.dto.response.AgentMessageResponse;
 import com.game.playforge.api.dto.response.AgentThreadResponse;
 import com.game.playforge.api.dto.response.ChatResponse;
+import com.game.playforge.api.mapper.AgentMessageMapper;
+import com.game.playforge.api.mapper.AgentThreadMapper;
 import com.game.playforge.application.dto.AgentChatResponse;
 import com.game.playforge.application.service.AgentChatAppService;
 import com.game.playforge.application.service.AgentThreadService;
@@ -34,6 +36,8 @@ public class AgentThreadController {
 
     private final AgentThreadService agentThreadService;
     private final AgentChatAppService agentChatAppService;
+    private final AgentThreadMapper agentThreadMapper;
+    private final AgentMessageMapper agentMessageMapper;
 
     /**
      * 创建会话
@@ -50,7 +54,7 @@ public class AgentThreadController {
         log.info("创建会话, userId={}, agentId={}", userId, createRequest.getAgentId());
         AgentThread thread = agentThreadService.createThread(
                 userId, createRequest.getAgentId(), createRequest.getTitle());
-        return ApiResult.success(toThreadResponse(thread));
+        return ApiResult.success(agentThreadMapper.toResponse(thread));
     }
 
     /**
@@ -67,10 +71,7 @@ public class AgentThreadController {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         log.info("列出会话, userId={}, agentId={}", userId, agentId);
         List<AgentThread> threads = agentThreadService.listThreads(userId, agentId);
-        List<AgentThreadResponse> responses = threads.stream()
-                .map(this::toThreadResponse)
-                .toList();
-        return ApiResult.success(responses);
+        return ApiResult.success(agentThreadMapper.toResponseList(threads));
     }
 
     /**
@@ -87,7 +88,7 @@ public class AgentThreadController {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         log.info("获取会话详情, userId={}, threadId={}", userId, id);
         AgentThread thread = agentThreadService.getThread(userId, id);
-        return ApiResult.success(toThreadResponse(thread));
+        return ApiResult.success(agentThreadMapper.toResponse(thread));
     }
 
     /**
@@ -125,10 +126,7 @@ public class AgentThreadController {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         log.info("获取消息历史, userId={}, threadId={}, limit={}, offset={}", userId, id, limit, offset);
         List<AgentMessage> messages = agentThreadService.getMessageHistory(userId, id, limit, offset);
-        List<AgentMessageResponse> responses = messages.stream()
-                .map(this::toMessageResponse)
-                .toList();
-        return ApiResult.success(responses);
+        return ApiResult.success(agentMessageMapper.toResponseList(messages));
     }
 
     /**
@@ -148,28 +146,5 @@ public class AgentThreadController {
         log.info("同步聊天, userId={}, threadId={}", userId, id);
         AgentChatResponse response = agentChatAppService.chat(userId, id, chatRequest.getMessage());
         return ApiResult.success(new ChatResponse(response.threadId(), response.content()));
-    }
-
-    private AgentThreadResponse toThreadResponse(AgentThread thread) {
-        AgentThreadResponse response = new AgentThreadResponse();
-        response.setId(thread.getId());
-        response.setAgentId(thread.getAgentId());
-        response.setTitle(thread.getTitle());
-        response.setStatus(thread.getStatus());
-        response.setMessageCount(thread.getMessageCount());
-        response.setLastMessageAt(thread.getLastMessageAt());
-        response.setCreatedAt(thread.getCreatedAt());
-        return response;
-    }
-
-    private AgentMessageResponse toMessageResponse(AgentMessage message) {
-        AgentMessageResponse response = new AgentMessageResponse();
-        response.setId(message.getId());
-        response.setRole(message.getRole());
-        response.setContent(message.getContent());
-        response.setToolName(message.getToolName());
-        response.setTokenCount(message.getTokenCount());
-        response.setCreatedAt(message.getCreatedAt());
-        return response;
     }
 }
