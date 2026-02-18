@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 子Agent服务
@@ -127,6 +128,9 @@ public class SubAgentService {
         return result[0];
     }
 
+    private static final int MAX_RETRIES = 3;
+    private static final long BASE_BACKOFF_SECONDS = 15;
+
     /**
      * 与子Agent同步聊天（由AsyncTaskManager在后台线程中调用）
      *
@@ -137,21 +141,99 @@ public class SubAgentService {
     public String chat(Long userId, Long parentThreadId, Long threadId, String message) {
         log.info("子Agent聊天, userId={}, parentThreadId={}, threadId={}", userId, parentThreadId, threadId);
         SubAgentContext context = validateSubAgentAccess(userId, parentThreadId, threadId);
-        AgentThread thread = context.thread();
         AgentDefinition definition = context.definition();
 
-        // 子Agent不传extraTools，不传userId（无子Agent工具）
-        AgentChatService agent = agentFactory.createAgent(definition, threadId, null, Collections.emptyList());
-        String response = agent.chat(message);
-
-        // 持久化消息
+        // 先保存用户消息（确保前端能看到已派发的任务）
         transactionTemplate.executeWithoutResult(status -> {
-            saveMessages(threadId, message, response);
-            agentThreadRepository.incrementMessageCount(threadId, 2, java.time.LocalDateTime.now());
+            AgentMessage userMsg = new AgentMessage();
+            userMsg.setThreadId(threadId);
+            userMsg.setRole("user");
+            userMsg.setContent(message);
+            userMsg.setTokenCount(0);
+            agentMessageRepository.insert(userMsg);
+            agentThreadRepository.incrementMessageCount(threadId, 1, java.time.LocalDateTime.now());
+        });
+
+        // 调用LLM（带速率限制重试）
+        String response;
+        try {
+            AgentChatService agent = agentFactory.createAgent(definition, threadId, null, Collections.emptyList());
+            response = chatWithRetry(agent, message, threadId);
+        } catch (Exception e) {
+            // 保存错误消息到对话中（用户能看到失败原因）
+            String errorContent = "[Error] " + extractErrorMessage(e);
+            transactionTemplate.executeWithoutResult(status -> {
+                AgentMessage errorMsg = new AgentMessage();
+                errorMsg.setThreadId(threadId);
+                errorMsg.setRole("assistant");
+                errorMsg.setContent(errorContent);
+                errorMsg.setTokenCount(0);
+                agentMessageRepository.insert(errorMsg);
+                agentThreadRepository.incrementMessageCount(threadId, 1, java.time.LocalDateTime.now());
+            });
+            throw e;
+        }
+
+        // 保存助手回复
+        transactionTemplate.executeWithoutResult(status -> {
+            AgentMessage assistantMsg = new AgentMessage();
+            assistantMsg.setThreadId(threadId);
+            assistantMsg.setRole("assistant");
+            assistantMsg.setContent(response);
+            assistantMsg.setTokenCount(0);
+            agentMessageRepository.insert(assistantMsg);
+            agentThreadRepository.incrementMessageCount(threadId, 1, java.time.LocalDateTime.now());
         });
 
         log.info("子Agent聊天完成, threadId={}, responseLength={}", threadId, response.length());
         return response;
+    }
+
+    private String chatWithRetry(AgentChatService agent, String message, Long threadId) {
+        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                return agent.chat(message);
+            } catch (Exception e) {
+                if (isRateLimitError(e) && attempt < MAX_RETRIES) {
+                    long waitSeconds = (long) Math.pow(2, attempt) * BASE_BACKOFF_SECONDS
+                            + ThreadLocalRandom.current().nextInt(10);
+                    log.warn("速率限制, threadId={}, 等待{}秒后重试 ({}/{})",
+                            threadId, waitSeconds, attempt + 1, MAX_RETRIES);
+                    try {
+                        Thread.sleep(waitSeconds * 1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                } else {
+                    throw e;
+                }
+            }
+        }
+        throw new RuntimeException("Unreachable");
+    }
+
+    private boolean isRateLimitError(Throwable e) {
+        while (e != null) {
+            if (e.getClass().getSimpleName().equals("RateLimitException")) {
+                return true;
+            }
+            e = e.getCause();
+        }
+        return false;
+    }
+
+    private String extractErrorMessage(Throwable e) {
+        // 提取最内层原因的简短消息
+        Throwable root = e;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        String msg = root.getMessage();
+        if (msg != null && msg.contains("rate_limit")) {
+            return "Rate limit exceeded. The task will be retried automatically.";
+        }
+        return msg != null ? msg : e.getClass().getSimpleName();
     }
 
     /**
