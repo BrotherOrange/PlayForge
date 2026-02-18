@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.SubProtocolCapable;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -19,6 +20,7 @@ import reactor.core.Disposable;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -47,7 +49,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class AgentChatWebSocketHandler extends TextWebSocketHandler {
+public class AgentChatWebSocketHandler extends TextWebSocketHandler implements SubProtocolCapable {
 
     private final AgentChatAppService agentChatAppService;
     private final UserService userService;
@@ -200,7 +202,11 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         cancelActiveStream(session.getId());
-        log.error("WebSocket传输错误, sessionId={}", session.getId(), exception);
+        if (exception instanceof IOException) {
+            log.warn("WebSocket传输中断, sessionId={}, cause={}", session.getId(), exception.getMessage());
+        } else {
+            log.error("WebSocket传输错误, sessionId={}", session.getId(), exception);
+        }
     }
 
     private void sendError(WebSocketSession session, String errorMessage) throws IOException {
@@ -217,6 +223,11 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
         } catch (IOException e) {
             log.error("发送错误消息失败, sessionId={}", session.getId(), e);
         }
+    }
+
+    @Override
+    public List<String> getSubProtocols() {
+        return List.of("bearer");
     }
 
     private String extractToken(WebSocketSession session) {
