@@ -38,5 +38,6 @@ export const getMessages = (threadId: string, limit = 50, offset = 0, signal?: A
 export const chatThread = (threadId: string, message: string) =>
   client.post<ApiResponse<{ threadId: string; content: string }>>(
     `/agent-threads/${threadId}/chat`,
-    { message }
+    { message },
+    { timeout: 300_000 }
   );
