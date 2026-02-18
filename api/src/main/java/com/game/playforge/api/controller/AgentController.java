@@ -14,7 +14,6 @@ import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ApiResult;
 import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentDefinition;
-import com.game.playforge.domain.model.AgentThread;
 import com.game.playforge.domain.model.User;
 import com.game.playforge.domain.repository.AgentThreadRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,9 +22,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Agent控制器
@@ -60,11 +59,14 @@ public class AgentController {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         log.info("列出用户Agent, userId={}", userId);
         List<AgentDefinition> agents = agentManagementService.listAgents(userId);
-        List<AgentThread> threads = agentThreadRepository.findByUserId(userId);
-        Map<Long, Long> latestThreadByAgent = new HashMap<>();
-        for (AgentThread thread : threads) {
-            latestThreadByAgent.putIfAbsent(thread.getAgentId(), thread.getId());
+        if (agents.isEmpty()) {
+            return ApiResult.success(List.of());
         }
+
+        List<Long> agentIds = agents.stream().map(AgentDefinition::getId).collect(Collectors.toList());
+        Map<Long, Long> latestThreadByAgent =
+                agentThreadRepository.findLatestActiveThreadIdsByAgentIds(userId, agentIds);
+
         List<AgentDefinitionResponse> responses = agents.stream()
                 .map(agent -> {
                     AgentDefinitionResponse response = agentDefinitionMapper.toResponse(agent);

@@ -11,7 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Agent会话仓储实现
@@ -61,6 +63,29 @@ public class AgentThreadRepositoryImpl implements AgentThreadRepository {
         log.debug("根据用户ID和AgentID查询会话列表, userId={}, agentId={}, count={}",
                 userId, agentId, threads.size());
         return threads;
+    }
+
+    @Override
+    public Map<Long, Long> findLatestActiveThreadIdsByAgentIds(Long userId, List<Long> agentIds) {
+        if (agentIds == null || agentIds.isEmpty()) {
+            return Map.of();
+        }
+        log.debug("批量查询最新ACTIVE会话, userId={}, agentCount={}", userId, agentIds.size());
+        List<AgentThread> threads = agentThreadMapper.selectList(
+                new LambdaQueryWrapper<AgentThread>()
+                        .select(AgentThread::getId, AgentThread::getAgentId, AgentThread::getCreatedAt)
+                        .eq(AgentThread::getUserId, userId)
+                        .eq(AgentThread::getStatus, ThreadStatus.ACTIVE.name())
+                        .in(AgentThread::getAgentId, agentIds)
+                        .orderByDesc(AgentThread::getCreatedAt)
+                        .orderByDesc(AgentThread::getId));
+
+        Map<Long, Long> latest = new LinkedHashMap<>();
+        for (AgentThread thread : threads) {
+            latest.putIfAbsent(thread.getAgentId(), thread.getId());
+        }
+        log.debug("批量查询最新ACTIVE会话完成, userId={}, hit={}", userId, latest.size());
+        return latest;
     }
 
     @Override

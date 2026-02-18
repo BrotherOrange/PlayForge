@@ -4,6 +4,7 @@ import com.game.playforge.domain.model.AgentThread;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Agent会话仓储接口
@@ -37,6 +38,15 @@ public interface AgentThreadRepository {
      * @return 会话列表（按创建时间降序）
      */
     List<AgentThread> findByUserIdAndAgentId(Long userId, Long agentId);
+
+    /**
+     * 批量查询每个Agent的最新ACTIVE会话ID
+     *
+     * @param userId   用户ID
+     * @param agentIds Agent定义ID列表
+     * @return key=agentId, value=latestActiveThreadId
+     */
+    Map<Long, Long> findLatestActiveThreadIdsByAgentIds(Long userId, List<Long> agentIds);
 
     /**
      * 新增会话

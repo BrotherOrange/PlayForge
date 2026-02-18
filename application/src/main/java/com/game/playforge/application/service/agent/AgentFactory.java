@@ -238,7 +238,9 @@ public class AgentFactory {
         }
 
         Integer resolvedMaxTokens = resolveMaxOutputTokens(definition, provider);
-        if (resolvedMaxTokens != null) {
+        // GPT-5.x requires max_completion_tokens; keep OpenAI token cap at model-level custom config
+        // to avoid sending deprecated max_tokens.
+        if (resolvedMaxTokens != null && provider != ModelProvider.OPENAI) {
             builder.maxOutputTokens(resolvedMaxTokens);
         }
 

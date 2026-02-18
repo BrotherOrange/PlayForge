@@ -33,7 +33,7 @@ public class ModelProviderRegistry {
     private final Map<ModelProvider, StreamingChatModel> streamingModels = new EnumMap<>(ModelProvider.class);
 
     @Autowired(required = false)
-    @Qualifier("openAiChatModel")
+    @Qualifier("playforgeOpenAiChatModel")
     private ChatModel openAiChatModel;
 
     @Autowired(required = false)
@@ -45,7 +45,7 @@ public class ModelProviderRegistry {
     private ChatModel geminiChatModel;
 
     @Autowired(required = false)
-    @Qualifier("openAiStreamingChatModel")
+    @Qualifier("playforgeOpenAiStreamingChatModel")
     private StreamingChatModel openAiStreamingChatModel;
 
     @Autowired(required = false)
