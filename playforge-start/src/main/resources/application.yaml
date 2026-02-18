@@ -68,20 +68,26 @@ langchain4j:
     chat-model:
       api-key: ${OPENAI_API_KEY:}
       model-name: gpt-5.2
+      max-tokens: 32768
     streaming-chat-model:
       api-key: ${OPENAI_API_KEY:}
       model-name: gpt-5.2
+      max-tokens: 32768
   anthropic:
     chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
       model-name: claude-opus-4-6
+      max-tokens: 32768
     streaming-chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
       model-name: claude-opus-4-6
+      max-tokens: 32768
   google-ai-gemini:
     chat-model:
       api-key: ${GEMINI_API_KEY:}
       model-name: gemini-3-pro-preview
+      max-output-tokens: 32768
     streaming-chat-model:
       api-key: ${GEMINI_API_KEY:}
       model-name: gemini-3-pro-preview
+      max-output-tokens: 32768
