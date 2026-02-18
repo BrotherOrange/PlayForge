@@ -203,7 +203,8 @@ const ChatPage = () => {
   }, [currentSubAgents.length, isSubAgent]);
 
   // Load messages when selected agent changes.
-  // Only depends on activeThreadId — streaming state changes should NOT trigger re-fetch.
+  // Also poll for new messages to catch updates from ongoing backend processing
+  // (e.g., after page refresh while chat is still running on the server).
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([]);
@@ -218,7 +219,30 @@ const ChatPage = () => {
         setMessages([]);
       });
 
-    return () => controller.abort();
+    let lastCount = -1;
+    let stablePolls = 0;
+    const pollTimer = window.setInterval(async () => {
+      if (isCurrentThreadStreaming) return; // SSE already handling updates
+      try {
+        const res = await getMessages(activeThreadId, 50, 0);
+        const data = res.data.data;
+        if (data.length !== lastCount) {
+          setMessages(data);
+          stablePolls = 0;
+        } else {
+          stablePolls++;
+          if (stablePolls >= 10) {
+            window.clearInterval(pollTimer);
+          }
+        }
+        lastCount = data.length;
+      } catch { /* ignore polling errors */ }
+    }, 3000);
+
+    return () => {
+      controller.abort();
+      window.clearInterval(pollTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
 
