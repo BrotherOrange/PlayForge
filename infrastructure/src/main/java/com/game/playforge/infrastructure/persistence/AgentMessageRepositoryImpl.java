@@ -47,13 +47,21 @@ public class AgentMessageRepositoryImpl implements AgentMessageRepository {
 
     @Override
     public List<AgentMessage> findByThreadId(Long threadId, int limit, int offset) {
-        log.debug("查询会话消息, threadId={}, limit={}, offset={}", threadId, limit, offset);
-        List<AgentMessage> messages = agentMessageMapper.selectList(
-                new LambdaQueryWrapper<AgentMessage>()
-                        .eq(AgentMessage::getThreadId, threadId)
-                        .orderByAsc(AgentMessage::getCreatedAt)
-                        .last("LIMIT " + limit + " OFFSET " + offset));
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        int safeOffset = Math.max(0, offset);
+        log.debug("查询会话消息, threadId={}, limit={}, offset={}", threadId, safeLimit, safeOffset);
+        List<AgentMessage> messages = agentMessageMapper.selectByThreadIdPaged(
+                threadId, safeLimit, safeOffset);
         log.debug("查询会话消息结果, threadId={}, count={}", threadId, messages.size());
+        return messages;
+    }
+
+    @Override
+    public List<AgentMessage> findLatestByThreadId(Long threadId, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        log.debug("查询会话最新消息, threadId={}, limit={}", threadId, safeLimit);
+        List<AgentMessage> messages = agentMessageMapper.selectLatestByThreadId(threadId, safeLimit);
+        log.debug("查询会话最新消息结果, threadId={}, count={}", threadId, messages.size());
         return messages;
     }
 

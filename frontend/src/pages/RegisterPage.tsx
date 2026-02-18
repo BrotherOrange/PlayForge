@@ -4,7 +4,6 @@ import { Form, Input, Button, Card, message, Typography } from 'antd';
 import { MobileOutlined, LockOutlined } from '@ant-design/icons';
 import { register } from '../api/auth';
 import { setTokens } from '../utils/token';
-import AvatarUpload from '../components/AvatarUpload';
 import { AxiosError } from 'axios';
 import { ApiResponse } from '../types/api';
 
@@ -21,7 +20,6 @@ interface RegisterFormValues {
 const RegisterPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [avatarKey, setAvatarKey] = useState<string | null>(null);
 
   const onFinish = async (values: RegisterFormValues) => {
     setLoading(true);
@@ -30,7 +28,7 @@ const RegisterPage = () => {
         phone: values.phone,
         password: values.password,
         nickname: values.nickname || null,
-        avatarUrl: avatarKey || null,
+        avatarUrl: null,
         bio: values.bio || null,
       });
       const { accessToken, refreshToken } = res.data.data;
@@ -61,9 +59,9 @@ const RegisterPage = () => {
             PLAYFORGE
           </Title>
           <Form onFinish={onFinish} size="large" layout="vertical">
-            <Form.Item style={{ textAlign: 'center', marginBottom: 16 }}>
-              <AvatarUpload value={null} onChange={setAvatarKey} />
-            </Form.Item>
+            <div style={{ textAlign: 'center', marginBottom: 12, color: '#94a3b8', fontSize: 13 }}>
+              注册后可在个人中心上传头像
+            </div>
             <Form.Item
               name="phone"
               label="手机号"

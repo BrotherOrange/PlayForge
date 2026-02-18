@@ -65,6 +65,13 @@ const ChatPage = () => {
     scrollToBottom();
   }, [messages, streamingContent, scrollToBottom]);
 
+  // Load agents (conversations) on mount
+  const loadAgents = useCallback(() => {
+    listAgents()
+      .then((res) => setAgents(res.data.data))
+      .catch(() => message.error('Failed to load conversations'));
+  }, []);
+
   // WebSocket callbacks
   const onToken = useCallback((content: string) => {
     streamingRef.current += content;
@@ -91,7 +98,7 @@ const ChatPage = () => {
     setIsStreaming(false);
     // Refresh agent list to update state
     loadAgents();
-  }, []);
+  }, [loadAgents]);
 
   const onError = useCallback((msg: string) => {
     message.error(msg);
@@ -107,13 +114,6 @@ const ChatPage = () => {
     onError,
   });
 
-  // Load agents (conversations) on mount
-  const loadAgents = useCallback(() => {
-    listAgents()
-      .then((res) => setAgents(res.data.data))
-      .catch(() => message.error('Failed to load conversations'));
-  }, []);
-
   useEffect(() => {
     loadAgents();
   }, [loadAgents]);
@@ -124,9 +124,18 @@ const ChatPage = () => {
       setMessages([]);
       return;
     }
-    getMessages(activeThreadId)
+
+    const controller = new AbortController();
+    getMessages(activeThreadId, 50, 0, controller.signal)
       .then((res) => setMessages(res.data.data))
-      .catch(() => setMessages([]));
+      .catch((error) => {
+        if ((error as { code?: string }).code === 'ERR_CANCELED') {
+          return;
+        }
+        setMessages([]);
+      });
+
+    return () => controller.abort();
   }, [activeThreadId]);
 
   const handleSelectAgent = (agent: AgentDefinition) => {

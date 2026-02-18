@@ -52,7 +52,7 @@ Code ranges: `0=success | 10xx=auth | 20xx=user | 30xx=oss | 40xx=client | 50xx=
 ### Auth Flow
 - **JWT**: HMAC-SHA256 access tokens (short-lived) + UUID refresh tokens in Redis
 - **AuthInterceptor**: Validates Bearer token, stores `userId` in request attribute (`AuthConstants.CURRENT_USER_ID`)
-- **Public endpoints** (excluded from auth): `/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`, `/api/oss/policy`
+- **Public endpoints** (excluded from auth): `/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`
 - **TraceIdInterceptor**: Generates UUID traceId in MDC for all `/api/**` requests
 - **Frontend**: Axios interceptor auto-refreshes expired access tokens (code 1003) with queuing to avoid thundering herd
 
@@ -64,7 +64,7 @@ Snowflake IDs via MyBatis-Plus `ASSIGN_ID`. All `Long` IDs are serialized as `St
 2. **AgentThread** — conversation session bound to an agent
 3. **AgentFactory** — builds LangChain4J `AiService` instances with tools, memory, and optional system prompt
 4. **AgentChatAppService.chatStream()** — returns `Flux<String>` for streaming responses
-5. **WebSocket** at `/ws/agent-chat?token=<jwt>&threadId=<id>`:
+5. **WebSocket** at `/ws/agent-chat?threadId=<id>` with `Sec-WebSocket-Protocol: bearer,<jwt>`:
    - Client sends `{"type": "message", "content": "..."}` or `{"type": "cancel"}`
    - Server streams `{"type": "token", "content": "..."}` → `{"type": "done"}` or `{"type": "error"}`
 6. **Admin-only**: Agent creation, deletion, and chat require `user.isAdmin = true`
@@ -86,7 +86,7 @@ Snowflake IDs via MyBatis-Plus `ASSIGN_ID`. All `Long` IDs are serialized as `St
 ### Frontend
 - **Routing** (App.tsx): `ProtectedRoute` wraps authenticated routes under `AppLayout`; public routes: `/login`, `/register`
 - **API client** (`api/client.ts`): Axios with baseURL `/api`, auto Bearer token, 401 refresh interceptor
-- **WebSocket hook** (`hooks/useAgentWebSocket.ts`): Protocol detection (`ws` for dev, `wss`/`ws` for prod based on `window.location.protocol`)
+- **WebSocket hook** (`hooks/useAgentWebSocket.ts`): Uses env-configurable WebSocket base URL with protocol normalization (`http -> ws`, `https -> wss`)
 - **Chat page**: Sidebar with agent/conversation list, real-time Markdown rendering (`react-markdown` + `remark-gfm`)
 - **Outlet context**: `AppLayout` passes `{ user, setUser }` to child routes via React Router's `useOutletContext`
 

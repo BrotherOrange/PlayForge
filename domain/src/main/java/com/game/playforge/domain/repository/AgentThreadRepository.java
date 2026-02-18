@@ -2,6 +2,7 @@ package com.game.playforge.domain.repository;
 
 import com.game.playforge.domain.model.AgentThread;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -50,4 +51,13 @@ public interface AgentThreadRepository {
      * @param agentThread 会话实体
      */
     void update(AgentThread agentThread);
+
+    /**
+     * 原子递增消息数并更新最后消息时间
+     *
+     * @param threadId       会话ID
+     * @param messageDelta   增量消息数
+     * @param lastMessageAt  最后消息时间
+     */
+    void incrementMessageCount(Long threadId, int messageDelta, LocalDateTime lastMessageAt);
 }

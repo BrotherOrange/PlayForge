@@ -29,7 +29,8 @@ export const deleteAgent = (id: string) =>
 export const deleteThread = (id: string) =>
   client.delete<ApiResponse<void>>(`/agent-threads/${id}`);
 
-export const getMessages = (threadId: string, limit = 50, offset = 0) =>
+export const getMessages = (threadId: string, limit = 50, offset = 0, signal?: AbortSignal) =>
   client.get<ApiResponse<AgentMessage[]>>(`/agent-threads/${threadId}/messages`, {
     params: { limit, offset },
+    signal,
   });

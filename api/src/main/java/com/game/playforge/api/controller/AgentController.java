@@ -27,7 +27,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Agent控制器
@@ -63,8 +65,17 @@ public class AgentController {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         log.info("列出用户Agent, userId={}", userId);
         List<AgentDefinition> agents = agentManagementService.listAgents(userId);
+        List<AgentThread> threads = agentThreadRepository.findByUserId(userId);
+        Map<Long, Long> latestThreadByAgent = new HashMap<>();
+        for (AgentThread thread : threads) {
+            latestThreadByAgent.putIfAbsent(thread.getAgentId(), thread.getId());
+        }
         List<AgentDefinitionResponse> responses = agents.stream()
-                .map(agent -> toResponseWithThread(agent, userId))
+                .map(agent -> {
+                    AgentDefinitionResponse response = agentDefinitionMapper.toResponse(agent);
+                    response.setThreadId(latestThreadByAgent.get(agent.getId()));
+                    return response;
+                })
                 .toList();
         return ApiResult.success(responses);
     }
@@ -73,9 +84,10 @@ public class AgentController {
      * 获取Agent详情
      */
     @GetMapping("/{id}")
-    public ApiResult<AgentDefinitionResponse> getAgent(@PathVariable Long id) {
-        log.info("获取Agent详情, id={}", id);
-        AgentDefinition agent = agentManagementService.getAgent(id);
+    public ApiResult<AgentDefinitionResponse> getAgent(HttpServletRequest request, @PathVariable Long id) {
+        Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
+        log.info("获取Agent详情, userId={}, id={}", userId, id);
+        AgentDefinition agent = agentManagementService.getAgent(userId, id);
         return ApiResult.success(agentDefinitionMapper.toResponse(agent));
     }
 
@@ -133,19 +145,15 @@ public class AgentController {
      * 创建技能
      */
     @PostMapping("/skills")
-    public ApiResult<AgentSkill> createSkill(@Valid @RequestBody CreateSkillRequest request) {
-        log.info("创建技能, name={}", request.getName());
+    public ApiResult<AgentSkill> createSkill(
+            HttpServletRequest httpRequest,
+            @Valid @RequestBody CreateSkillRequest request) {
+        Long userId = (Long) httpRequest.getAttribute(AuthConstants.CURRENT_USER_ID);
+        requireAdmin(userId);
+        log.info("创建技能, userId={}, name={}", userId, request.getName());
         AgentSkill skill = agentSkillMapper.fromCreateRequest(request);
         AgentSkill created = agentManagementService.createSkill(skill);
         return ApiResult.success(created);
     }
 
-    private AgentDefinitionResponse toResponseWithThread(AgentDefinition agent, Long userId) {
-        AgentDefinitionResponse response = agentDefinitionMapper.toResponse(agent);
-        List<AgentThread> threads = agentThreadRepository.findByUserIdAndAgentId(userId, agent.getId());
-        if (!threads.isEmpty()) {
-            response.setThreadId(threads.getFirst().getId());
-        }
-        return response;
-    }
 }

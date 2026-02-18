@@ -9,9 +9,45 @@ interface UseAgentWebSocketOptions {
   onError: (message: string) => void;
 }
 
+const normalizeBaseUrl = (url: string): string => url.replace(/\/+$/, '');
+
+const toWebSocketBase = (url: string): string => {
+  if (url.startsWith('http://')) {
+    return `ws://${url.slice('http://'.length)}`;
+  }
+  if (url.startsWith('https://')) {
+    return `wss://${url.slice('https://'.length)}`;
+  }
+  return url;
+};
+
+const resolveWebSocketBaseUrl = (): string => {
+  const wsBase = process.env.REACT_APP_WS_BASE_URL?.trim();
+  if (wsBase) {
+    return normalizeBaseUrl(toWebSocketBase(wsBase));
+  }
+
+  const apiBase = process.env.REACT_APP_API_BASE_URL?.trim();
+  if (apiBase) {
+    return normalizeBaseUrl(toWebSocketBase(apiBase));
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  if (process.env.NODE_ENV === 'development') {
+    const backendHost = process.env.REACT_APP_DEV_BACKEND_HOST?.trim() || window.location.hostname;
+    const backendPort = process.env.REACT_APP_DEV_BACKEND_PORT?.trim() || '8080';
+    return `${protocol}://${backendHost}:${backendPort}`;
+  }
+
+  return `${protocol}://${window.location.host}`;
+};
+
 export function useAgentWebSocket({ threadId, onToken, onDone, onError }: UseAgentWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const callbacksRef = useRef({ onToken, onDone, onError });
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const shouldReconnectRef = useRef(false);
   callbacksRef.current = { onToken, onDone, onError };
 
   useEffect(() => {
@@ -20,41 +56,73 @@ export function useAgentWebSocket({ threadId, onToken, onDone, onError }: UseAge
     const token = getAccessToken();
     if (!token) return;
 
-    // Dev: connect directly to backend (CRA proxy doesn't support WS)
-    // Prod: derive protocol from page URL (http→ws, https→wss)
-    const isDev = process.env.NODE_ENV === 'development';
-    const protocol = isDev ? 'ws' : (window.location.protocol === 'https:' ? 'wss' : 'ws');
-    const host = isDev ? 'localhost:8080' : window.location.host;
-    const url = `${protocol}://${host}/ws/agent-chat?token=${encodeURIComponent(token)}&threadId=${threadId}`;
+    shouldReconnectRef.current = true;
 
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    const wsBaseUrl = resolveWebSocketBaseUrl();
+    const url = `${wsBaseUrl}/ws/agent-chat?threadId=${encodeURIComponent(threadId)}`;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg: WsServerMessage = JSON.parse(event.data);
-        switch (msg.type) {
-          case 'token':
-            callbacksRef.current.onToken(msg.content || '');
-            break;
-          case 'done':
-            callbacksRef.current.onDone();
-            break;
-          case 'error':
-            callbacksRef.current.onError(msg.content || 'Unknown error');
-            break;
-        }
-      } catch {
-        // ignore non-JSON messages
+    const connect = () => {
+      const currentToken = getAccessToken();
+      if (!currentToken) {
+        callbacksRef.current.onError('Authentication expired, please log in again');
+        return;
       }
+      const ws = new WebSocket(url, ['bearer', currentToken]);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg: WsServerMessage = JSON.parse(event.data);
+          switch (msg.type) {
+            case 'token':
+              callbacksRef.current.onToken(msg.content || '');
+              break;
+            case 'done':
+              callbacksRef.current.onDone();
+              break;
+            case 'error':
+              callbacksRef.current.onError(msg.content || 'Unknown error');
+              break;
+          }
+        } catch {
+          // ignore non-JSON messages
+        }
+      };
+
+      ws.onerror = () => {
+        // onclose will handle reconnect and user-facing error.
+      };
+
+      ws.onclose = (event) => {
+        if (!shouldReconnectRef.current || event.code === 1000) {
+          return;
+        }
+        if (reconnectAttemptsRef.current >= 5) {
+          callbacksRef.current.onError('WebSocket disconnected, please refresh and try again');
+          return;
+        }
+        reconnectAttemptsRef.current += 1;
+        const delay = Math.min(1000 * 2 ** (reconnectAttemptsRef.current - 1), 5000);
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
     };
 
-    ws.onerror = () => {
-      callbacksRef.current.onError('WebSocket connection error');
-    };
+    connect();
 
     return () => {
-      ws.close();
+      shouldReconnectRef.current = false;
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      const ws = wsRef.current;
+      if (ws) {
+        ws.close(1000, 'cleanup');
+      }
       wsRef.current = null;
     };
   }, [threadId]);

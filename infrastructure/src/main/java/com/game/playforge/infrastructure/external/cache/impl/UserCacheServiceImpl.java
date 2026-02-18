@@ -33,7 +33,8 @@ public class UserCacheServiceImpl implements UserCacheService {
     public void cacheUser(User user) {
         try {
             String key = AuthConstants.USER_CACHE_PREFIX + user.getId();
-            String json = objectMapper.writeValueAsString(user);
+            User cachedUser = toCachedUser(user);
+            String json = objectMapper.writeValueAsString(cachedUser);
             redisTemplate.opsForValue().set(key, json, 30, TimeUnit.MINUTES);
             log.debug("缓存用户信息, userId={}", user.getId());
         } catch (JsonProcessingException e) {
@@ -62,5 +63,19 @@ public class UserCacheServiceImpl implements UserCacheService {
         String key = AuthConstants.USER_CACHE_PREFIX + userId;
         Boolean deleted = redisTemplate.delete(key);
         log.debug("清除用户缓存, userId={}, deleted={}", userId, Boolean.TRUE.equals(deleted));
+    }
+
+    private User toCachedUser(User user) {
+        User cached = new User();
+        cached.setId(user.getId());
+        cached.setPhone(user.getPhone());
+        cached.setNickname(user.getNickname());
+        cached.setAvatarUrl(user.getAvatarUrl());
+        cached.setBio(user.getBio());
+        cached.setIsAdmin(user.getIsAdmin());
+        cached.setIsDeleted(user.getIsDeleted());
+        cached.setCreatedAt(user.getCreatedAt());
+        cached.setUpdatedAt(user.getUpdatedAt());
+        return cached;
     }
 }

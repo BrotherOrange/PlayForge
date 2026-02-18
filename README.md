@@ -170,7 +170,7 @@ See `deploy/env.example` for the full list of required environment variables.
 | Method | Path | Description | Auth |
 |--------|------|-------------|------|
 | GET | `/api/threads/{id}/messages` | Get conversation messages | Yes |
-| WebSocket | `/ws/agent-chat?token=<jwt>&threadId=<id>` | Streaming AI chat | Yes (Admin) |
+| WebSocket | `/ws/agent-chat?threadId=<id>` + `Sec-WebSocket-Protocol: bearer,<jwt>` | Streaming AI chat | Yes (Admin) |
 
 ### OSS
 

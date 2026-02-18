@@ -37,6 +37,15 @@ public interface AgentMessageRepository {
     List<AgentMessage> findByThreadId(Long threadId, int limit, int offset);
 
     /**
+     * 查询会话最新消息（按创建时间倒序）
+     *
+     * @param threadId 会话ID
+     * @param limit    查询条数
+     * @return 最新消息列表（按创建时间倒序）
+     */
+    List<AgentMessage> findLatestByThreadId(Long threadId, int limit);
+
+    /**
      * 根据会话ID统计消息数量
      *
      * @param threadId 会话ID

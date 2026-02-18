@@ -18,6 +18,7 @@ import reactor.core.Disposable;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,6 +56,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
 
     private static final String ATTR_USER_ID = "userId";
     private static final String ATTR_THREAD_ID = "threadId";
+    private static final String GENERIC_ERROR_MESSAGE = "服务异常，请稍后重试";
     private final Map<String, Disposable> activeStreams = new ConcurrentHashMap<>();
 
     @Override
@@ -68,11 +70,11 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
         Map<String, String> params = UriComponentsBuilder.fromUri(uri).build()
                 .getQueryParams().toSingleValueMap();
 
-        String token = params.get("token");
+        String token = extractToken(session);
         String threadIdStr = params.get("threadId");
 
         if (token == null || threadIdStr == null) {
-            session.close(CloseStatus.BAD_DATA.withReason("缺少token或threadId参数"));
+            session.close(CloseStatus.BAD_DATA.withReason("缺少认证token或threadId参数"));
             return;
         }
 
@@ -82,7 +84,13 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
         }
 
         Long userId = jwtUtil.parseUserId(token);
-        Long threadId = Long.parseLong(threadIdStr);
+        Long threadId;
+        try {
+            threadId = Long.parseLong(threadIdStr);
+        } catch (NumberFormatException e) {
+            session.close(CloseStatus.BAD_DATA.withReason("threadId格式错误"));
+            return;
+        }
 
         // 仅管理员可使用聊天
         User user = userService.getProfile(userId);
@@ -147,7 +155,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
                             },
                             error -> {
                                 log.error("流式聊天错误, sessionId={}", session.getId(), error);
-                                sendErrorSafe(session, error.getMessage());
+                                sendErrorSafe(session, GENERIC_ERROR_MESSAGE);
                                 activeStreams.remove(session.getId());
                             },
                             () -> {
@@ -166,7 +174,7 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
             activeStreams.put(session.getId(), disposable);
         } catch (Exception e) {
             log.error("启动流式聊天失败, sessionId={}", session.getId(), e);
-            sendError(session, e.getMessage());
+            sendError(session, GENERIC_ERROR_MESSAGE);
         }
     }
 
@@ -209,5 +217,25 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler {
         } catch (IOException e) {
             log.error("发送错误消息失败, sessionId={}", session.getId(), e);
         }
+    }
+
+    private String extractToken(WebSocketSession session) {
+        String protocolHeader = session.getHandshakeHeaders().getFirst("Sec-WebSocket-Protocol");
+        if (protocolHeader != null && !protocolHeader.isBlank()) {
+            String[] protocols = Arrays.stream(protocolHeader.split(","))
+                    .map(String::trim)
+                    .filter(p -> !p.isBlank())
+                    .toArray(String[]::new);
+            if (protocols.length >= 2 && "bearer".equalsIgnoreCase(protocols[0])) {
+                return protocols[1];
+            }
+        }
+
+        String authorization = session.getHandshakeHeaders().getFirst("Authorization");
+        if (authorization != null && authorization.startsWith("Bearer ")) {
+            String token = authorization.substring("Bearer ".length()).trim();
+            return token.isBlank() ? null : token;
+        }
+        return null;
     }
 }

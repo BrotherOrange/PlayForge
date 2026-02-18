@@ -16,8 +16,11 @@ import com.game.playforge.domain.model.AgentMessage;
 import com.game.playforge.domain.model.AgentThread;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,6 +35,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/agent-threads")
 @RequiredArgsConstructor
+@Validated
 public class AgentThreadController {
 
     private final AgentThreadService agentThreadService;
@@ -121,8 +125,8 @@ public class AgentThreadController {
     public ApiResult<List<AgentMessageResponse>> getMessages(
             HttpServletRequest request,
             @PathVariable Long id,
-            @RequestParam(defaultValue = "50") int limit,
-            @RequestParam(defaultValue = "0") int offset) {
+            @RequestParam(defaultValue = "50") @Min(value = 1, message = "limit最小为1") @Max(value = 200, message = "limit最大为200") int limit,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "offset不能小于0") int offset) {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         log.info("获取消息历史, userId={}, threadId={}, limit={}, offset={}", userId, id, limit, offset);
         List<AgentMessage> messages = agentThreadService.getMessageHistory(userId, id, limit, offset);

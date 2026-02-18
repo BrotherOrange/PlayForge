@@ -5,6 +5,8 @@ import com.game.playforge.application.service.AgentChatAppService;
 import com.game.playforge.application.service.agent.AgentChatService;
 import com.game.playforge.application.service.agent.AgentFactory;
 import com.game.playforge.application.service.agent.AgentStreamingChatService;
+import com.game.playforge.common.constant.AgentConstants;
+import com.game.playforge.common.enums.ThreadStatus;
 import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentDefinition;
@@ -21,10 +23,12 @@ import dev.langchain4j.service.TokenStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -46,6 +50,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     private final AgentDefinitionRepository agentDefinitionRepository;
     private final AgentMessageRepository agentMessageRepository;
     private final RedisChatMemoryStore redisChatMemoryStore;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     public AgentChatResponse chat(Long userId, Long threadId, String message) {
@@ -54,13 +59,15 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         AgentThread thread = validateAndGetThread(userId, threadId);
         AgentDefinition definition = getAgentDefinition(thread.getAgentId());
 
-        recoverMemoryIfNeeded(thread);
+        recoverMemoryIfNeeded(thread, definition);
 
         AgentChatService agent = agentFactory.createAgent(definition, threadId);
         String response = agent.chat(message);
 
-        saveMessages(threadId, message, response);
-        updateThreadStats(thread);
+        transactionTemplate.executeWithoutResult(status -> {
+            saveMessages(threadId, message, response);
+            updateThreadStats(threadId, 2);
+        });
 
         log.info("同步聊天完成, threadId={}, responseLength={}", threadId, response.length());
         return new AgentChatResponse(threadId, response);
@@ -73,7 +80,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         AgentThread thread = validateAndGetThread(userId, threadId);
         AgentDefinition definition = getAgentDefinition(thread.getAgentId());
 
-        recoverMemoryIfNeeded(thread);
+        recoverMemoryIfNeeded(thread, definition);
 
         AgentStreamingChatService agent = agentFactory.createStreamingAgent(definition, threadId);
         TokenStream tokenStream = agent.chat(message);
@@ -88,8 +95,10 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     })
                     .onCompleteResponse(resp -> {
                         try {
-                            saveMessages(threadId, message, fullResponse.toString());
-                            updateThreadStats(thread);
+                            transactionTemplate.executeWithoutResult(status -> {
+                                saveMessages(threadId, message, fullResponse.toString());
+                                updateThreadStats(threadId, 2);
+                            });
                         } catch (Exception e) {
                             log.error("保存消息失败, threadId={}", threadId, e);
                         }
@@ -112,6 +121,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         if (thread == null) {
             throw new BusinessException(ResultCode.THREAD_NOT_FOUND);
         }
+        if (ThreadStatus.DELETED.name().equals(thread.getStatus())) {
+            throw new BusinessException(ResultCode.THREAD_NOT_FOUND);
+        }
         if (!thread.getUserId().equals(userId)) {
             throw new BusinessException(ResultCode.THREAD_ACCESS_DENIED);
         }
@@ -126,7 +138,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         return definition;
     }
 
-    private void recoverMemoryIfNeeded(AgentThread thread) {
+    private void recoverMemoryIfNeeded(AgentThread thread, AgentDefinition definition) {
         List<ChatMessage> existing = redisChatMemoryStore.getMessages(thread.getId());
         if (!existing.isEmpty()) {
             return;
@@ -139,13 +151,16 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         log.info("Redis记忆过期，从MySQL恢复, threadId={}, messageCount={}",
                 thread.getId(), thread.getMessageCount());
 
-        int windowSize = 20;
-        List<AgentMessage> dbMessages = agentMessageRepository.findByThreadId(
-                thread.getId(), windowSize, 0);
+        int windowSize = definition.getMemoryWindowSize() != null
+                ? definition.getMemoryWindowSize()
+                : AgentConstants.DEFAULT_MEMORY_WINDOW_SIZE;
+        List<AgentMessage> dbMessages = agentMessageRepository.findLatestByThreadId(
+                thread.getId(), windowSize);
 
         if (dbMessages.isEmpty()) {
             return;
         }
+        Collections.reverse(dbMessages);
 
         List<ChatMessage> chatMessages = new ArrayList<>();
         for (AgentMessage msg : dbMessages) {
@@ -178,10 +193,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         agentMessageRepository.insert(assistantMsg);
     }
 
-    private void updateThreadStats(AgentThread thread) {
-        long count = agentMessageRepository.countByThreadId(thread.getId());
-        thread.setMessageCount((int) count);
-        thread.setLastMessageAt(LocalDateTime.now());
-        agentThreadRepository.update(thread);
+    private void updateThreadStats(Long threadId, int messageDelta) {
+        agentThreadRepository.incrementMessageCount(threadId, messageDelta, LocalDateTime.now());
     }
 }

@@ -9,6 +9,8 @@ import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
+
 /**
  * LangChain4J Bean 过滤器
  * <p>
@@ -39,23 +41,42 @@ public class LangChain4jBeanFilter implements BeanFactoryPostProcessor, Environm
             return;
         }
 
-        removeIfKeyBlank(registry, "langchain4j.open-ai.chat-model.api-key",
+        removeIfKeysUnavailable(registry, new String[]{
+                        "langchain4j.open-ai.chat-model.api-key",
+                        "langchain4j.open-ai.streaming-chat-model.api-key"
+                },
                 "openAiChatModel", "openAiStreamingChatModel");
-        removeIfKeyBlank(registry, "langchain4j.anthropic.chat-model.api-key",
+        removeIfKeysUnavailable(registry, new String[]{
+                        "langchain4j.anthropic.chat-model.api-key",
+                        "langchain4j.anthropic.streaming-chat-model.api-key"
+                },
                 "anthropicChatModel", "anthropicStreamingChatModel");
-        removeIfKeyBlank(registry, "langchain4j.google-ai-gemini.chat-model.api-key",
+        removeIfKeysUnavailable(registry, new String[]{
+                        "langchain4j.google-ai-gemini.chat-model.api-key",
+                        "langchain4j.google-ai-gemini.streaming-chat-model.api-key"
+                },
                 "googleAiGeminiChatModel", "googleAiGeminiStreamingChatModel");
     }
 
-    private void removeIfKeyBlank(BeanDefinitionRegistry registry, String property, String... beanNames) {
-        String value = environment.getProperty(property);
-        if (value == null || value.isBlank()) {
+    private void removeIfKeysUnavailable(BeanDefinitionRegistry registry, String[] properties, String... beanNames) {
+        boolean configured = Arrays.stream(properties)
+                .map(environment::getProperty)
+                .anyMatch(this::hasRealValue);
+        if (!configured) {
             for (String beanName : beanNames) {
                 if (registry.containsBeanDefinition(beanName)) {
                     registry.removeBeanDefinition(beanName);
-                    log.info("移除Bean定义 '{}': API Key未配置 ({})", beanName, property);
+                    log.info("移除Bean定义 '{}': API Key未配置 ({})", beanName, Arrays.toString(properties));
                 }
             }
         }
+    }
+
+    private boolean hasRealValue(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        // Some placeholder values may remain unresolved as literal strings like "${OPENAI_API_KEY:}".
+        return !(value.startsWith("${") && value.endsWith("}"));
     }
 }

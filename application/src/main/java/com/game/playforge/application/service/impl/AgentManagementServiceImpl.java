@@ -1,6 +1,7 @@
 package com.game.playforge.application.service.impl;
 
 import com.game.playforge.application.service.AgentManagementService;
+import com.game.playforge.common.enums.ModelProvider;
 import com.game.playforge.common.enums.ThreadStatus;
 import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ResultCode;
@@ -81,11 +82,14 @@ public class AgentManagementServiceImpl implements AgentManagementService {
     }
 
     @Override
-    public AgentDefinition getAgent(Long id) {
-        log.debug("获取Agent详情, id={}", id);
+    public AgentDefinition getAgent(Long userId, Long id) {
+        log.debug("获取Agent详情, userId={}, id={}", userId, id);
         AgentDefinition definition = agentDefinitionRepository.findById(id);
         if (definition == null) {
             throw new BusinessException(ResultCode.AGENT_NOT_FOUND);
+        }
+        if (!userId.equals(definition.getUserId())) {
+            throw new BusinessException(ResultCode.AGENT_ACCESS_DENIED);
         }
         return definition;
     }
@@ -102,13 +106,15 @@ public class AgentManagementServiceImpl implements AgentManagementService {
     @Transactional
     public AgentWithThread createAgentWithThread(Long userId, String provider, String modelName, String displayName) {
         log.info("原子创建Agent+Thread, userId={}, provider={}, model={}", userId, provider, modelName);
+        ModelProvider providerEnum = parseProvider(provider);
+        String normalizedProvider = providerEnum.getValue();
 
         // 创建 Agent
         AgentDefinition agent = new AgentDefinition();
         agent.setUserId(userId);
-        agent.setName(provider + "-" + modelName + "-" + UUID.randomUUID().toString().substring(0, 8));
+        agent.setName(normalizedProvider + "-" + modelName + "-" + UUID.randomUUID().toString().substring(0, 8));
         agent.setDisplayName(displayName != null ? displayName : modelName);
-        agent.setProvider(provider);
+        agent.setProvider(normalizedProvider);
         agent.setModelName(modelName);
         agent.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
         agent.setMemoryWindowSize(20);
@@ -158,5 +164,13 @@ public class AgentManagementServiceImpl implements AgentManagementService {
         log.info("创建技能, name={}", agentSkill.getName());
         agentSkillRepository.insert(agentSkill);
         return agentSkill;
+    }
+
+    private ModelProvider parseProvider(String provider) {
+        try {
+            return ModelProvider.valueOf(provider.toUpperCase());
+        } catch (Exception e) {
+            throw new BusinessException(ResultCode.PARAM_VALIDATION_FAILED, "不支持的模型供应商");
+        }
     }
 }

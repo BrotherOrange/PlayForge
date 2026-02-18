@@ -170,7 +170,7 @@ docker run -p 8080:8080 --env-file .env playforge
 | 方法 | 路径 | 说明 | 需认证 |
 |------|------|------|--------|
 | GET | `/api/threads/{id}/messages` | 获取会话消息 | 是 |
-| WebSocket | `/ws/agent-chat?token=<jwt>&threadId=<id>` | 流式 AI 对话 | 是（管理员） |
+| WebSocket | `/ws/agent-chat?threadId=<id>` + `Sec-WebSocket-Protocol: bearer,<jwt>` | 流式 AI 对话 | 是（管理员） |
 
 ### OSS
 

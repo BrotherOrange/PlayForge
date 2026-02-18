@@ -25,10 +25,11 @@ public interface AgentManagementService {
     /**
      * 获取Agent详情
      *
+     * @param userId 用户ID（用于校验归属）
      * @param id Agent定义ID
      * @return Agent定义
      */
-    AgentDefinition getAgent(Long id);
+    AgentDefinition getAgent(Long userId, Long id);
 
     /**
      * 创建Agent定义（绑定用户）

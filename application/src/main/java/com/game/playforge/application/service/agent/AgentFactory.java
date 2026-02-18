@@ -2,6 +2,8 @@ package com.game.playforge.application.service.agent;
 
 import com.game.playforge.common.constant.AgentConstants;
 import com.game.playforge.common.enums.ModelProvider;
+import com.game.playforge.common.exception.BusinessException;
+import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentDefinition;
 import com.game.playforge.domain.model.AgentSkill;
 import com.game.playforge.domain.repository.AgentSkillRepository;
@@ -54,7 +56,7 @@ public class AgentFactory {
     public AgentChatService createAgent(AgentDefinition definition, Long threadId) {
         log.info("创建同步Agent, agent={}, threadId={}", definition.getName(), threadId);
 
-        ModelProvider provider = ModelProvider.valueOf(definition.getProvider().toUpperCase());
+        ModelProvider provider = resolveProvider(definition.getProvider());
         ChatModel chatModel = modelProviderRegistry.getChatModel(provider);
         List<AgentSkill> skills = loadSkills(definition);
         String systemPrompt = systemPromptResolver.resolve(definition, skills);
@@ -88,7 +90,7 @@ public class AgentFactory {
     public AgentStreamingChatService createStreamingAgent(AgentDefinition definition, Long threadId) {
         log.info("创建流式Agent, agent={}, threadId={}", definition.getName(), threadId);
 
-        ModelProvider provider = ModelProvider.valueOf(definition.getProvider().toUpperCase());
+        ModelProvider provider = resolveProvider(definition.getProvider());
         StreamingChatModel streamingModel = modelProviderRegistry.getStreamingChatModel(provider);
         List<AgentSkill> skills = loadSkills(definition);
         String systemPrompt = systemPromptResolver.resolve(definition, skills);
@@ -153,5 +155,13 @@ public class AgentFactory {
                 .filter(s -> !s.isEmpty())
                 .distinct()
                 .collect(Collectors.toList()));
+    }
+
+    private ModelProvider resolveProvider(String provider) {
+        try {
+            return ModelProvider.valueOf(provider.toUpperCase());
+        } catch (Exception e) {
+            throw new BusinessException(ResultCode.AGENT_PROVIDER_UNAVAILABLE, "不支持的模型供应商");
+        }
     }
 }

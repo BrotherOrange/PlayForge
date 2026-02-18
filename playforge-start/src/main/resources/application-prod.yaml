@@ -29,6 +29,10 @@ aliyun:
     access-key-secret: ${OSS_ACCESS_KEY_SECRET}
     bucket-name: ${OSS_BUCKET_NAME:oss-game-design}
 
+app:
+  security:
+    websocket-allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:3000}
+
 langchain4j:
   open-ai:
     chat-model:

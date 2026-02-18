@@ -5,6 +5,7 @@ import com.game.playforge.common.enums.ThreadStatus;
 import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentMessage;
+import com.game.playforge.domain.model.AgentDefinition;
 import com.game.playforge.domain.model.AgentThread;
 import com.game.playforge.domain.repository.AgentDefinitionRepository;
 import com.game.playforge.domain.repository.AgentMessageRepository;
@@ -36,7 +37,14 @@ public class AgentThreadServiceImpl implements AgentThreadService {
     public AgentThread createThread(Long userId, Long agentId, String title) {
         log.info("创建会话, userId={}, agentId={}", userId, agentId);
 
-        if (agentDefinitionRepository.findById(agentId) == null) {
+        AgentDefinition definition = agentDefinitionRepository.findById(agentId);
+        if (definition == null) {
+            throw new BusinessException(ResultCode.AGENT_NOT_FOUND);
+        }
+        if (!userId.equals(definition.getUserId())) {
+            throw new BusinessException(ResultCode.AGENT_ACCESS_DENIED);
+        }
+        if (!Boolean.TRUE.equals(definition.getIsActive())) {
             throw new BusinessException(ResultCode.AGENT_NOT_FOUND);
         }
 
@@ -69,6 +77,9 @@ public class AgentThreadServiceImpl implements AgentThreadService {
         if (thread == null) {
             throw new BusinessException(ResultCode.THREAD_NOT_FOUND);
         }
+        if (ThreadStatus.DELETED.name().equals(thread.getStatus())) {
+            throw new BusinessException(ResultCode.THREAD_NOT_FOUND);
+        }
         if (!thread.getUserId().equals(userId)) {
             throw new BusinessException(ResultCode.THREAD_ACCESS_DENIED);
         }
@@ -80,6 +91,7 @@ public class AgentThreadServiceImpl implements AgentThreadService {
         log.info("删除会话, userId={}, threadId={}", userId, threadId);
         AgentThread thread = getThread(userId, threadId);
         thread.setStatus(ThreadStatus.DELETED.name());
+        thread.setIsDeleted(true);
         agentThreadRepository.update(thread);
         redisChatMemoryStore.deleteMessages(threadId);
         log.info("删除会话成功, threadId={}", threadId);
@@ -87,8 +99,11 @@ public class AgentThreadServiceImpl implements AgentThreadService {
 
     @Override
     public List<AgentMessage> getMessageHistory(Long userId, Long threadId, int limit, int offset) {
-        log.debug("获取消息历史, userId={}, threadId={}, limit={}, offset={}", userId, threadId, limit, offset);
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        int safeOffset = Math.max(0, offset);
+        log.debug("获取消息历史, userId={}, threadId={}, limit={}, offset={}",
+                userId, threadId, safeLimit, safeOffset);
         getThread(userId, threadId);
-        return agentMessageRepository.findByThreadId(threadId, limit, offset);
+        return agentMessageRepository.findByThreadId(threadId, safeLimit, safeOffset);
     }
 }

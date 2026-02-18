@@ -1,6 +1,8 @@
 package com.game.playforge.infrastructure.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.game.playforge.common.enums.ThreadStatus;
 import com.game.playforge.domain.model.AgentThread;
 import com.game.playforge.domain.repository.AgentThreadRepository;
 import com.game.playforge.infrastructure.persistence.mapper.AgentThreadMapper;
@@ -8,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -40,6 +43,7 @@ public class AgentThreadRepositoryImpl implements AgentThreadRepository {
         List<AgentThread> threads = agentThreadMapper.selectList(
                 new LambdaQueryWrapper<AgentThread>()
                         .eq(AgentThread::getUserId, userId)
+                        .ne(AgentThread::getStatus, ThreadStatus.DELETED.name())
                         .orderByDesc(AgentThread::getCreatedAt));
         log.debug("根据用户ID查询会话列表, userId={}, count={}", userId, threads.size());
         return threads;
@@ -52,6 +56,7 @@ public class AgentThreadRepositoryImpl implements AgentThreadRepository {
                 new LambdaQueryWrapper<AgentThread>()
                         .eq(AgentThread::getUserId, userId)
                         .eq(AgentThread::getAgentId, agentId)
+                        .ne(AgentThread::getStatus, ThreadStatus.DELETED.name())
                         .orderByDesc(AgentThread::getCreatedAt));
         log.debug("根据用户ID和AgentID查询会话列表, userId={}, agentId={}, count={}",
                 userId, agentId, threads.size());
@@ -70,5 +75,20 @@ public class AgentThreadRepositoryImpl implements AgentThreadRepository {
         log.info("更新会话, threadId={}", agentThread.getId());
         agentThreadMapper.updateById(agentThread);
         log.info("更新会话成功, threadId={}", agentThread.getId());
+    }
+
+    @Override
+    public void incrementMessageCount(Long threadId, int messageDelta, LocalDateTime lastMessageAt) {
+        if (messageDelta <= 0) {
+            return;
+        }
+        log.debug("递增会话消息数, threadId={}, delta={}", threadId, messageDelta);
+        agentThreadMapper.update(
+                null,
+                new LambdaUpdateWrapper<AgentThread>()
+                        .eq(AgentThread::getId, threadId)
+                        .setSql("message_count = COALESCE(message_count, 0) + {0}", messageDelta)
+                        .set(AgentThread::getLastMessageAt, lastMessageAt)
+        );
     }
 }

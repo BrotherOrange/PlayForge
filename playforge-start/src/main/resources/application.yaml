@@ -54,6 +54,10 @@ auth:
     access-token-expire-minutes: 30
     refresh-token-expire-days: 7
 
+app:
+  security:
+    websocket-allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:3000}
+
 logging:
   level:
     org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver: ERROR
