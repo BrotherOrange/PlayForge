@@ -1,6 +1,7 @@
 package com.game.playforge.application.service;
 
 import com.game.playforge.application.dto.AgentChatResponse;
+import com.game.playforge.application.dto.AgentStreamEvent;
 import reactor.core.publisher.Flux;
 
 /**
@@ -27,7 +28,7 @@ public interface AgentChatAppService {
      * @param userId   用户ID
      * @param threadId 会话ID
      * @param message  用户消息
-     * @return Token流
+     * @return 流式事件（文本Token/Thinking）
      */
-    Flux<String> chatStream(Long userId, Long threadId, String message);
+    Flux<AgentStreamEvent> chatStream(Long userId, Long threadId, String message);
 }

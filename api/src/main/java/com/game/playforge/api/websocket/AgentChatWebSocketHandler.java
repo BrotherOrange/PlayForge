@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 服务端发送JSON:
  * <ul>
  *   <li>{@code {"type": "token", "content": "部分内容"}} — 流式Token</li>
+ *   <li>{@code {"type": "thinking", "content": "思考过程"}} — 流式Thinking</li>
  *   <li>{@code {"type": "done"}} — 流式完成</li>
  *   <li>{@code {"type": "error", "content": "错误信息"}} — 错误</li>
  * </ul>
@@ -165,15 +166,19 @@ public class AgentChatWebSocketHandler extends TextWebSocketHandler implements S
         try {
             Disposable disposable = agentChatAppService.chatStream(userId, threadId, content)
                     .subscribe(
-                            token -> {
+                            event -> {
                                 try {
                                     if (session.isOpen()) {
                                         String json = objectMapper.writeValueAsString(
-                                                Map.of("type", "token", "content", token));
+                                                Map.of(
+                                                        "type", event.type(),
+                                                        "content", event.content() == null ? "" : event.content()
+                                                ));
                                         session.sendMessage(new TextMessage(json));
                                     }
                                 } catch (IOException e) {
-                                    log.error("发送Token失败, sessionId={}", session.getId(), e);
+                                    log.error("发送流式事件失败, sessionId={}, type={}",
+                                            session.getId(), event.type(), e);
                                 }
                             },
                             error -> {

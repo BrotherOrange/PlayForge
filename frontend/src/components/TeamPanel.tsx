@@ -67,6 +67,9 @@ interface SubAgentCardState {
 const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
   const [cardStates, setCardStates] = useState<Record<string, SubAgentCardState>>({});
   const cardStatesRef = useRef(cardStates);
+  const panelBodyRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickPanelBottomRef = useRef(true);
+  const prevSubAgentCountRef = useRef(0);
   const messageContainerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const streamSocketsRef = useRef<Record<string, WebSocket | null>>({});
 
@@ -189,6 +192,26 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
       }
     }
   }, [subAgents, cardStates]);
+
+  // Keep right-side sub-agent panel pinned near bottom unless user scrolls upward manually.
+  useEffect(() => {
+    const panel = panelBodyRef.current;
+    if (!panel) return;
+
+    const hasNewSubAgent = subAgents.length > prevSubAgentCountRef.current;
+    prevSubAgentCountRef.current = subAgents.length;
+
+    if (hasNewSubAgent || shouldStickPanelBottomRef.current) {
+      panel.scrollTop = panel.scrollHeight;
+    }
+  }, [subAgents, cardStates]);
+
+  const handlePanelBodyScroll = useCallback(() => {
+    const panel = panelBodyRef.current;
+    if (!panel) return;
+    const distanceToBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight;
+    shouldStickPanelBottomRef.current = distanceToBottom <= 24;
+  }, []);
 
   const updateDraft = useCallback((agentId: string, value: string) => {
     setCardStates((prev) => {
@@ -398,7 +421,11 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
         </button>
       </div>
 
-      <div className="sf-team-panel-body">
+      <div
+        className="sf-team-panel-body"
+        ref={panelBodyRef}
+        onScroll={handlePanelBodyScroll}
+      >
         {subAgents.map((agent) => {
           const state = cardStates[agent.id];
           const isExpanded = state?.expanded ?? false;
@@ -483,7 +510,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
                   <div className="sf-subagent-composer" onClick={(e) => e.stopPropagation()}>
                     <textarea
                       className="sf-subagent-input"
-                      placeholder="Type a task to this sub-agent..."
+                      placeholder="Task"
                       rows={1}
                       value={inputValue}
                       disabled={isSending}

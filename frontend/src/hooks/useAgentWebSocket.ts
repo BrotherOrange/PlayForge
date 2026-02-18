@@ -5,6 +5,7 @@ import { WsServerMessage } from '../types/api';
 interface UseAgentWebSocketOptions {
   threadId: string | null;
   onToken: (content: string) => void;
+  onThinking: (content: string) => void;
   onDone: () => void;
   onError: (message: string) => void;
 }
@@ -42,13 +43,19 @@ const resolveWebSocketBaseUrl = (): string => {
   return `${protocol}://${window.location.host}`;
 };
 
-export function useAgentWebSocket({ threadId, onToken, onDone, onError }: UseAgentWebSocketOptions) {
+export function useAgentWebSocket({
+  threadId,
+  onToken,
+  onThinking,
+  onDone,
+  onError,
+}: UseAgentWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
-  const callbacksRef = useRef({ onToken, onDone, onError });
+  const callbacksRef = useRef({ onToken, onThinking, onDone, onError });
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const shouldReconnectRef = useRef(false);
-  callbacksRef.current = { onToken, onDone, onError };
+  callbacksRef.current = { onToken, onThinking, onDone, onError };
 
   useEffect(() => {
     if (!threadId) return;
@@ -80,6 +87,9 @@ export function useAgentWebSocket({ threadId, onToken, onDone, onError }: UseAge
           switch (msg.type) {
             case 'token':
               callbacksRef.current.onToken(msg.content || '');
+              break;
+            case 'thinking':
+              callbacksRef.current.onThinking(msg.content || '');
               break;
             case 'done':
               callbacksRef.current.onDone();

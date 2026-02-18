@@ -106,6 +106,6 @@ export interface WsClientMessage {
 }
 
 export interface WsServerMessage {
-  type: 'token' | 'done' | 'error';
+  type: 'token' | 'thinking' | 'done' | 'error';
   content?: string;
 }

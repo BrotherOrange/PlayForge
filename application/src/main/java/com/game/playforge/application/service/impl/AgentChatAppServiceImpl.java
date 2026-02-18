@@ -1,6 +1,7 @@
 package com.game.playforge.application.service.impl;
 
 import com.game.playforge.application.dto.AgentChatResponse;
+import com.game.playforge.application.dto.AgentStreamEvent;
 import com.game.playforge.application.service.AgentChatAppService;
 import com.game.playforge.application.service.agent.AgentChatService;
 import com.game.playforge.application.service.agent.AgentFactory;
@@ -108,7 +109,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     }
 
     @Override
-    public Flux<String> chatStream(Long userId, Long threadId, String message) {
+    public Flux<AgentStreamEvent> chatStream(Long userId, Long threadId, String message) {
         log.info("流式聊天, userId={}, threadId={}", userId, threadId);
 
         AgentThread thread = validateAndGetThread(userId, threadId);
@@ -121,7 +122,8 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         return Flux.create(sink -> {
             StringBuilder fullResponse = new StringBuilder();
-            startStreamingWithRetry(agent, message, threadId, sink, fullResponse, 0);
+            StringBuilder fullThinking = new StringBuilder();
+            startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0);
 
             sink.onCancel(() -> {
                 log.info("流式聊天被取消, threadId={}", threadId);
@@ -269,8 +271,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     private void startStreamingWithRetry(AgentStreamingChatService agent,
                                          String message,
                                          Long threadId,
-                                         FluxSink<String> sink,
+                                         FluxSink<AgentStreamEvent> sink,
                                          StringBuilder fullResponse,
+                                         StringBuilder fullThinking,
                                          int attempt) {
         if (sink.isCancelled()) {
             return;
@@ -292,7 +295,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     sink.error(error);
                     return;
                 }
-                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, attempt + 1);
+                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, attempt + 1);
                 return;
             }
             sink.error(error);
@@ -304,13 +307,24 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                         return;
                     }
                     fullResponse.append(token);
-                    sink.next(token);
+                    sink.next(AgentStreamEvent.token(token));
+                })
+                .onPartialThinking(partialThinking -> {
+                    if (sink.isCancelled() || partialThinking == null) {
+                        return;
+                    }
+                    String thinkingText = partialThinking.text();
+                    if (thinkingText == null || thinkingText.isBlank()) {
+                        return;
+                    }
+                    fullThinking.append(thinkingText);
+                    sink.next(AgentStreamEvent.thinking(thinkingText));
                 })
                 .onCompleteResponse(resp -> {
                     if (sink.isCancelled()) {
                         return;
                     }
-                    emitCompletionFallbackIfNeeded(threadId, sink, fullResponse, resp);
+                    emitCompletionFallbackIfNeeded(threadId, sink, fullResponse, fullThinking, resp);
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
                             saveMessages(threadId, message, fullResponse.toString());
@@ -337,7 +351,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                             sink.error(error);
                             return;
                         }
-                        startStreamingWithRetry(agent, message, threadId, sink, fullResponse, attempt + 1);
+                        startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, attempt + 1);
                         return;
                     }
                     log.error("流式聊天错误, threadId={}", threadId, error);
@@ -351,9 +365,18 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
      * 这里做统一兜底，避免前端出现“无响应”。
      */
     private void emitCompletionFallbackIfNeeded(Long threadId,
-                                                FluxSink<String> sink,
+                                                FluxSink<AgentStreamEvent> sink,
                                                 StringBuilder fullResponse,
+                                                StringBuilder fullThinking,
                                                 ChatResponse completeResponse) {
+        if (fullThinking.isEmpty()) {
+            String completionThinking = extractCompletionThinking(completeResponse);
+            if (!completionThinking.isBlank()) {
+                fullThinking.append(completionThinking);
+                sink.next(AgentStreamEvent.thinking(completionThinking));
+            }
+        }
+
         if (!fullResponse.isEmpty()) {
             return;
         }
@@ -361,7 +384,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         String completionText = extractCompletionText(completeResponse);
         if (!completionText.isBlank()) {
             fullResponse.append(completionText);
-            sink.next(completionText);
+            sink.next(AgentStreamEvent.token(completionText));
             return;
         }
 
@@ -371,7 +394,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     "已派发 %d 个子Agent任务，正在处理中。请稍候，我会继续汇总结果。",
                     taskManager.pendingCount());
             fullResponse.append(progressHint);
-            sink.next(progressHint);
+            sink.next(AgentStreamEvent.token(progressHint));
         }
     }
 
@@ -381,6 +404,14 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         }
         String text = completeResponse.aiMessage().text();
         return text == null ? "" : text.trim();
+    }
+
+    private String extractCompletionThinking(ChatResponse completeResponse) {
+        if (completeResponse == null || completeResponse.aiMessage() == null) {
+            return "";
+        }
+        String thinking = completeResponse.aiMessage().thinking();
+        return thinking == null ? "" : thinking.trim();
     }
 
     private boolean isRetryableError(Throwable throwable) {

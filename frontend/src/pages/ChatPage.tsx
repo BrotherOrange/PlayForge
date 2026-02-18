@@ -39,6 +39,8 @@ const AVAILABLE_MODELS = [
   { provider: 'gemini', modelName: 'gemini-3-pro-preview', displayName: 'Gemini 3 Pro' },
 ];
 
+const SELECTED_AGENT_STORAGE_KEY = 'playforge:selectedAgentId';
+
 const ChatPage = () => {
   const { user } = useOutletContext<{ user: UserProfile | null }>();
   const isAdmin = user?.isAdmin === true;
@@ -48,6 +50,7 @@ const ChatPage = () => {
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
+  const [streamingThinking, setStreamingThinking] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -56,6 +59,7 @@ const ChatPage = () => {
   const [teamPanelOpen, setTeamPanelOpen] = useState(false);
 
   const streamingRef = useRef('');
+  const thinkingRef = useRef('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -102,9 +106,17 @@ const ChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  const clearStreamingState = useCallback(() => {
+    streamingRef.current = '';
+    thinkingRef.current = '';
+    setStreamingContent('');
+    setStreamingThinking('');
+    setIsStreaming(false);
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingContent, scrollToBottom]);
+  }, [messages, streamingContent, streamingThinking, scrollToBottom]);
 
   // Load agents
   const loadAgents = useCallback(() => {
@@ -119,11 +131,14 @@ const ChatPage = () => {
     setStreamingContent(streamingRef.current);
   }, []);
 
+  const onThinking = useCallback((content: string) => {
+    thinkingRef.current += content;
+    setStreamingThinking(thinkingRef.current);
+  }, []);
+
   const onDone = useCallback(() => {
     const finalContent = streamingRef.current;
-    streamingRef.current = '';
-    setStreamingContent('');
-    setIsStreaming(false);
+    clearStreamingState();
 
     if (activeThreadId) {
       getMessages(activeThreadId, 50, 0)
@@ -157,18 +172,17 @@ const ChatPage = () => {
       ]);
     }
     loadAgents();
-  }, [activeThreadId, loadAgents]);
+  }, [activeThreadId, clearStreamingState, loadAgents]);
 
   const onError = useCallback((msg: string) => {
     message.error(msg);
-    streamingRef.current = '';
-    setStreamingContent('');
-    setIsStreaming(false);
-  }, []);
+    clearStreamingState();
+  }, [clearStreamingState]);
 
   const { sendMessage: wsSend, cancelStream } = useAgentWebSocket({
     threadId: activeThreadId,
     onToken,
+    onThinking,
     onDone,
     onError,
   });
@@ -177,6 +191,36 @@ const ChatPage = () => {
   useEffect(() => {
     loadAgents();
   }, [loadAgents]);
+
+  // Persist selected agent to keep conversation visible after page refresh.
+  useEffect(() => {
+    if (selectedAgent?.id) {
+      localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, selectedAgent.id);
+      return;
+    }
+    localStorage.removeItem(SELECTED_AGENT_STORAGE_KEY);
+  }, [selectedAgent?.id]);
+
+  // Restore selected agent (or default to first lead agent) after agents are loaded.
+  useEffect(() => {
+    if (allAgents.length === 0) {
+      if (selectedAgent) {
+        setSelectedAgent(null);
+      }
+      return;
+    }
+
+    if (selectedAgent && allAgents.some((agent) => agent.id === selectedAgent.id)) {
+      return;
+    }
+
+    const savedAgentId = localStorage.getItem(SELECTED_AGENT_STORAGE_KEY);
+    const savedAgent = savedAgentId
+      ? allAgents.find((agent) => agent.id === savedAgentId)
+      : undefined;
+    const fallbackAgent = allAgents.find((agent) => !agent.parentThreadId) || allAgents[0];
+    setSelectedAgent(savedAgent || fallbackAgent);
+  }, [allAgents, selectedAgent]);
 
   // Poll agents while streaming (to detect sub-agent creation)
   useEffect(() => {
@@ -206,6 +250,7 @@ const ChatPage = () => {
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([]);
+      clearStreamingState();
       return;
     }
 
@@ -218,13 +263,12 @@ const ChatPage = () => {
       });
 
     return () => controller.abort();
-  }, [activeThreadId]);
+  }, [activeThreadId, clearStreamingState]);
 
   const handleSelectAgent = (agent: AgentDefinition) => {
     if (isStreaming) return;
     setSelectedAgent(agent);
-    setStreamingContent('');
-    streamingRef.current = '';
+    clearStreamingState();
   };
 
   const handleBackToLead = () => {
@@ -250,8 +294,7 @@ const ChatPage = () => {
       setAllAgents((prev) => [agent, ...prev]);
       setSelectedAgent(agent);
       setMessages([]);
-      setStreamingContent('');
-      streamingRef.current = '';
+      clearStreamingState();
     } catch {
       message.error('Failed to create conversation');
     } finally {
@@ -274,6 +317,7 @@ const ChatPage = () => {
       ) {
         setSelectedAgent(null);
         setMessages([]);
+        clearStreamingState();
       }
       setTeamPanelOpen(false);
     } catch {
@@ -299,7 +343,9 @@ const ChatPage = () => {
     setInputValue('');
     setIsStreaming(true);
     streamingRef.current = '';
+    thinkingRef.current = '';
     setStreamingContent('');
+    setStreamingThinking('');
     wsSend(content);
 
     if (inputRef.current) {
@@ -524,6 +570,18 @@ const ChatPage = () => {
           ))}
 
           {isStreaming && (
+            <div className="sf-chat-bubble assistant thinking">
+              <div className="sf-chat-bubble-role">Thinking</div>
+              <div className="sf-chat-bubble-content sf-markdown sf-chat-thinking-content">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {streamingThinking || 'Thinking...'}
+                </ReactMarkdown>
+                <span className="sf-chat-cursor" />
+              </div>
+            </div>
+          )}
+
+          {isStreaming && !!streamingContent && (
             <div className="sf-chat-bubble assistant">
               <div className="sf-chat-bubble-role">
                 {selectedAgent?.displayName || 'AI'}
@@ -553,7 +611,7 @@ const ChatPage = () => {
                 <textarea
                   ref={inputRef}
                   className="sf-chat-input"
-                  placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+                  placeholder="Message"
                   value={inputValue}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}

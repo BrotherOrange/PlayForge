@@ -780,6 +780,11 @@
   border: 1px solid var(--sf-border);
 }
 
+.sf-chat-bubble.assistant.thinking {
+  background: rgba(52, 211, 153, 0.06);
+  border: 1px dashed rgba(52, 211, 153, 0.35);
+}
+
 .sf-chat-bubble-role {
   font-size: 11px;
   font-weight: 700;
@@ -793,9 +798,18 @@
   color: var(--sf-primary);
 }
 
+.sf-chat-bubble.assistant.thinking .sf-chat-bubble-role {
+  color: #34d399;
+}
+
 .sf-chat-bubble-content {
   font-size: 14px;
   color: var(--sf-text);
+}
+
+.sf-chat-thinking-content {
+  color: #bbf7d0;
+  font-size: 13px;
 }
 
 /* --- Markdown Rendering --- */
