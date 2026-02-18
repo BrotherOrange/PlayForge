@@ -49,7 +49,9 @@ public class SubAgentTool {
         }
     }
 
-    @Tool("Create a specialized sub-agent. Returns agent info including threadId for task dispatch. " +
+    @Tool("Create a specialized sub-agent. Returns agent info including a NUMERIC threadId for task dispatch. " +
+          "IMPORTANT: You MUST use the exact numeric threadId returned (e.g. 2024214713863147522) when calling " +
+          "dispatchTask or destroySubAgent. Do NOT invent your own IDs. " +
           "Available types: systemDesigner, balancingDesigner, levelDesigner, narrativeDesigner, " +
           "combatDesigner, technicalDesigner, juniorDesigner, default.")
     public String createSubAgent(
@@ -68,12 +70,11 @@ public class SubAgentTool {
             return String.format("""
                     Sub-agent created successfully:
                     - Name: %s
-                    - Thread ID: %s
+                    - threadId: %s  ← USE THIS EXACT NUMERIC ID for dispatchTask/destroySubAgent
                     - Type: %s
-                    - Role: %s
-                    Use dispatchTask with threadId "%s" to assign tasks.""",
+                    - Role: %s""",
                     info.agentName(), info.threadId(), info.type(),
-                    info.displayName(), info.threadId());
+                    info.displayName());
         } catch (Exception e) {
             log.error("创建子Agent失败", e);
             return "Failed to create sub-agent: " + e.getMessage();
@@ -81,9 +82,10 @@ public class SubAgentTool {
     }
 
     @Tool("Dispatch a task to a sub-agent asynchronously. The agent works in background. " +
-          "Returns immediately. Use awaitResults to collect the response later.")
+          "Returns immediately. Use awaitResults to collect the response later. " +
+          "IMPORTANT: threadId MUST be the exact numeric ID returned by createSubAgent (e.g. 2024214713863147522).")
     public String dispatchTask(
-            @P("Thread ID of the sub-agent") String threadId,
+            @P("The exact numeric threadId returned by createSubAgent (e.g. 2024214713863147522). Do NOT make up IDs.") String threadId,
             @P("Task message to send to the agent") String message) {
         try {
             Long threadIdLong = Long.parseLong(threadId);
@@ -148,9 +150,10 @@ public class SubAgentTool {
         }
     }
 
-    @Tool("Destroy a sub-agent and cancel its pending task. Use after collecting results to free resources.")
+    @Tool("Destroy a sub-agent and cancel its pending task. Use after collecting results to free resources. " +
+          "threadId MUST be the exact numeric ID from createSubAgent.")
     public String destroySubAgent(
-            @P("Thread ID of the sub-agent to destroy") String threadId) {
+            @P("The exact numeric threadId returned by createSubAgent (e.g. 2024214713863147522)") String threadId) {
         try {
             Long threadIdLong = Long.parseLong(threadId);
             SubAgentInfo agent = resolveTeamAgent(threadIdLong);
