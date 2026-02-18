@@ -38,8 +38,6 @@ const AVAILABLE_MODELS = [
   { provider: 'gemini', modelName: 'gemini-3-flash-preview', displayName: 'Gemini 3 Flash' },
 ];
 
-const SELECTED_AGENT_STORAGE_KEY = 'playforge:selectedAgentId';
-
 const ChatPage = () => {
   const { user } = useOutletContext<{ user: UserProfile | null }>();
   const isAdmin = user?.isAdmin === true;
@@ -49,9 +47,7 @@ const ChatPage = () => {
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
-  const [streamProgress, setStreamProgress] = useState<string[]>([]);
-  const [streamingThinking, setStreamingThinking] = useState('');
-  const [streamingAssistantContent, setStreamingAssistantContent] = useState('');
+  const [streamingBubbles, setStreamingBubbles] = useState<AgentMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -61,7 +57,7 @@ const ChatPage = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeThreadIdRef = useRef<string | null>(null);
-  const streamingAssistantContentRef = useRef('');
+  const streamingBubblesRef = useRef<AgentMessage[]>([]);
 
   const activeThreadId = selectedAgent?.threadId ?? null;
   const isAnyMainStreamRunning = streamingThreadId !== null;
@@ -104,6 +100,15 @@ const ChatPage = () => {
   // Whether selected agent is a sub-agent
   const isSubAgent = !!selectedAgent?.parentThreadId;
 
+  const lastStreamingAssistantId = useMemo(() => {
+    for (let i = streamingBubbles.length - 1; i >= 0; i -= 1) {
+      if (streamingBubbles[i].role === 'assistant') {
+        return streamingBubbles[i].id;
+      }
+    }
+    return null;
+  }, [streamingBubbles]);
+
   // Auto-scroll to bottom
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -114,12 +119,14 @@ const ChatPage = () => {
   }, [activeThreadId]);
 
   useEffect(() => {
+    streamingBubblesRef.current = streamingBubbles;
+  }, [streamingBubbles]);
+
+  useEffect(() => {
     scrollToBottom();
   }, [
     messages,
-    streamProgress,
-    streamingThinking,
-    streamingAssistantContent,
+    streamingBubbles,
     isCurrentThreadStreaming,
     scrollToBottom,
   ]);
@@ -136,16 +143,7 @@ const ChatPage = () => {
     loadAgents();
   }, [loadAgents]);
 
-  // Persist selected agent to keep conversation visible after page refresh.
-  useEffect(() => {
-    if (selectedAgent?.id) {
-      localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, selectedAgent.id);
-      return;
-    }
-    localStorage.removeItem(SELECTED_AGENT_STORAGE_KEY);
-  }, [selectedAgent?.id]);
-
-  // Restore selected agent (or default to first lead agent) after agents are loaded.
+  // Keep selected agent object fresh. Do NOT auto-select any conversation on page load.
   useEffect(() => {
     if (allAgents.length === 0) {
       if (selectedAgent) {
@@ -160,23 +158,22 @@ const ChatPage = () => {
       return;
     }
 
-    if (selectedAgent) {
-      const updatedSelected = agentsWithThread.find((agent) => agent.id === selectedAgent.id);
-      if (updatedSelected) {
-        if (updatedSelected.threadId !== selectedAgent.threadId) {
-          setSelectedAgent(updatedSelected);
-        }
-        return;
-      }
+    if (!selectedAgent) return;
+
+    const updatedSelected = agentsWithThread.find((agent) => agent.id === selectedAgent.id);
+    if (!updatedSelected) {
+      setSelectedAgent(null);
+      return;
     }
 
-    const savedAgentId = localStorage.getItem(SELECTED_AGENT_STORAGE_KEY);
-    const savedAgent = savedAgentId
-      ? agentsWithThread.find((agent) => agent.id === savedAgentId)
-      : undefined;
-    const fallbackAgent =
-      agentsWithThread.find((agent) => !agent.parentThreadId) || agentsWithThread[0];
-    setSelectedAgent(savedAgent || fallbackAgent);
+    if (
+      updatedSelected.threadId !== selectedAgent.threadId ||
+      updatedSelected.parentThreadId !== selectedAgent.parentThreadId ||
+      updatedSelected.displayName !== selectedAgent.displayName ||
+      updatedSelected.modelName !== selectedAgent.modelName
+    ) {
+      setSelectedAgent(updatedSelected);
+    }
   }, [allAgents, selectedAgent]);
 
   // Keep team panel in near-realtime while lead agent is active.
@@ -286,9 +283,7 @@ const ChatPage = () => {
     for (let i = 0; i <= retries; i += 1) {
       const res = await getMessages(threadId, 50, 0);
       latestMessages = res.data.data;
-      const hasAssistantReply =
-        latestMessages.length > 0 &&
-        latestMessages[latestMessages.length - 1].role === 'assistant';
+      const hasAssistantReply = latestMessages.some((msg) => msg.role === 'assistant');
       if (hasAssistantReply || i === retries) {
         break;
       }
@@ -317,43 +312,109 @@ const ChatPage = () => {
     ]);
     setInputValue('');
     setStreamingThreadId(activeThreadId);
-    setStreamProgress([]);
-    setStreamingThinking('');
-    setStreamingAssistantContent('');
-    streamingAssistantContentRef.current = '';
+    setStreamingBubbles([]);
+    streamingBubblesRef.current = [];
 
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
     }
 
     const sendingThreadId = activeThreadId;
+    let refreshedFromDb = false;
     try {
       await chatThreadSSE(sendingThreadId, content, (event) => {
         const payload = event.content ?? '';
         switch (event.type) {
           case 'progress':
             if (payload) {
-              setStreamProgress((prev) => [...prev, payload]);
+              setStreamingBubbles((prev) => [
+                ...prev,
+                {
+                  id: `tmp-progress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  role: 'tool',
+                  content: payload,
+                  toolName: 'progress',
+                  tokenCount: 0,
+                  createdAt: new Date().toISOString(),
+                },
+              ]);
             }
             break;
           case 'thinking':
             if (payload) {
-              setStreamingThinking((prev) => `${prev}${payload}`);
+              setStreamingBubbles((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'tool' && last.toolName === 'thinking') {
+                  const next = [...prev];
+                  next[next.length - 1] = {
+                    ...last,
+                    content: `${last.content}${payload}`,
+                  };
+                  return next;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: `tmp-thinking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    role: 'tool',
+                    content: payload,
+                    toolName: 'thinking',
+                    tokenCount: 0,
+                    createdAt: new Date().toISOString(),
+                  },
+                ];
+              });
             }
             break;
           case 'token':
             if (payload) {
-              setStreamingAssistantContent((prev) => {
-                const next = `${prev}${payload}`;
-                streamingAssistantContentRef.current = next;
-                return next;
+              setStreamingBubbles((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant') {
+                  const next = [...prev];
+                  next[next.length - 1] = {
+                    ...last,
+                    content: `${last.content}${payload}`,
+                  };
+                  return next;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: `tmp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    role: 'assistant',
+                    content: payload,
+                    toolName: null,
+                    tokenCount: 0,
+                    createdAt: new Date().toISOString(),
+                  },
+                ];
               });
             }
             break;
           case 'response':
             if (payload) {
-              setStreamingAssistantContent(payload);
-              streamingAssistantContentRef.current = payload;
+              setStreamingBubbles((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant') {
+                  const normalized =
+                    payload.startsWith(last.content) ? payload : `${last.content}${payload}`;
+                  const next = [...prev];
+                  next[next.length - 1] = { ...last, content: normalized };
+                  return next;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: `tmp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    role: 'assistant',
+                    content: payload,
+                    toolName: null,
+                    tokenCount: 0,
+                    createdAt: new Date().toISOString(),
+                  },
+                ];
+              });
             }
             break;
           case 'error':
@@ -366,12 +427,13 @@ const ChatPage = () => {
 
       // Refresh messages from DB to get accurate IDs and timestamps
       const latestMessages = await fetchMessagesWithRetry(sendingThreadId, 2);
-      const hasAssistantReply =
-        latestMessages.length > 0 &&
-        latestMessages[latestMessages.length - 1].role === 'assistant';
-      const fallbackContent = streamingAssistantContentRef.current.trim();
+      const latestLiveAssistant = [...streamingBubblesRef.current]
+        .reverse()
+        .find((m) => m.role === 'assistant');
+      const fallbackContent = latestLiveAssistant?.content.trim() || '';
+      const hasAssistantReplyInDb = latestMessages.some((msg) => msg.role === 'assistant');
       const mergedMessages =
-        !hasAssistantReply && fallbackContent
+        !hasAssistantReplyInDb && fallbackContent
           ? [
               ...latestMessages,
               {
@@ -388,15 +450,20 @@ const ChatPage = () => {
       if (activeThreadIdRef.current === sendingThreadId) {
         setMessages(mergedMessages);
       }
+      refreshedFromDb = true;
       loadAgents();
     } catch {
       message.error('Failed to get response, please try again');
     } finally {
+      if (!refreshedFromDb && activeThreadIdRef.current === sendingThreadId) {
+        const fallbackBubbles = streamingBubblesRef.current;
+        if (fallbackBubbles.length > 0) {
+          setMessages((prev) => [...prev, ...fallbackBubbles]);
+        }
+      }
       setStreamingThreadId(null);
-      setStreamProgress([]);
-      setStreamingThinking('');
-      setStreamingAssistantContent('');
-      streamingAssistantContentRef.current = '';
+      setStreamingBubbles([]);
+      streamingBubblesRef.current = [];
     }
   };
 
@@ -606,40 +673,70 @@ const ChatPage = () => {
           )}
 
           {messages.map((msg) => (
-            <div key={msg.id} className={`sf-chat-bubble ${msg.role}`}>
+            <div
+              key={msg.id}
+              className={`sf-chat-bubble ${
+                msg.role === 'user' ? 'user' : 'assistant'
+              } ${
+                msg.role === 'tool' && msg.toolName === 'thinking' ? 'thinking' : ''
+              }`}
+            >
               <div className="sf-chat-bubble-role">
-                {msg.role === 'user' ? 'You' : selectedAgent?.displayName || 'AI'}
+                {msg.role === 'user'
+                  ? 'You'
+                  : msg.role === 'tool' && msg.toolName === 'progress'
+                    ? 'Status'
+                    : msg.role === 'tool' && msg.toolName === 'thinking'
+                      ? `${selectedAgent?.displayName || 'AI'} Thinking`
+                      : selectedAgent?.displayName || 'AI'}
               </div>
-              <div className="sf-chat-bubble-content sf-markdown">
+              <div
+                className={`sf-chat-bubble-content ${
+                  msg.role === 'tool' && msg.toolName === 'thinking'
+                    ? 'sf-chat-thinking-content'
+                    : ''
+                } sf-markdown`}
+              >
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
               </div>
             </div>
           ))}
 
           {isCurrentThreadStreaming &&
-            streamProgress.map((step, i) => {
-              const isActive = i === streamProgress.length - 1;
-              return (
-                <div key={`progress-${i}`} className="sf-chat-bubble assistant">
-                  <div className="sf-chat-bubble-role">Status</div>
-                  <div className="sf-chat-bubble-content">
-                    <span className="sf-chat-progress-icon" style={{ marginRight: 8 }}>
-                      {isActive ? (
-                        <LoadingOutlined />
-                      ) : (
-                        <span className="sf-chat-progress-check">&#10003;</span>
-                      )}
-                    </span>
-                    <span className="sf-chat-progress-text">{step}</span>
-                  </div>
+            streamingBubbles.map((msg) => (
+              <div
+                key={msg.id}
+                className={`sf-chat-bubble ${
+                  msg.role === 'user' ? 'user' : 'assistant'
+                } ${
+                  msg.role === 'tool' && msg.toolName === 'thinking' ? 'thinking' : ''
+                }`}
+              >
+                <div className="sf-chat-bubble-role">
+                  {msg.role === 'user'
+                    ? 'You'
+                    : msg.role === 'tool' && msg.toolName === 'progress'
+                      ? 'Status'
+                      : msg.role === 'tool' && msg.toolName === 'thinking'
+                        ? `${selectedAgent?.displayName || 'AI'} Thinking`
+                        : selectedAgent?.displayName || 'AI'}
                 </div>
-              );
-            })}
+                <div
+                  className={`sf-chat-bubble-content ${
+                    msg.role === 'tool' && msg.toolName === 'thinking'
+                      ? 'sf-chat-thinking-content'
+                      : ''
+                  } sf-markdown`}
+                >
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                  {msg.role === 'assistant' && msg.id === lastStreamingAssistantId && (
+                    <span className="sf-chat-cursor" />
+                  )}
+                </div>
+              </div>
+            ))}
 
-          {isCurrentThreadStreaming &&
-            streamProgress.length === 0 &&
-            streamingThinking.trim().length === 0 &&
-            streamingAssistantContent.length === 0 && (
+          {isCurrentThreadStreaming && streamingBubbles.length === 0 && (
               <div className="sf-chat-bubble assistant">
                 <div className="sf-chat-bubble-role">Status</div>
                 <div className="sf-chat-bubble-content">
@@ -650,33 +747,6 @@ const ChatPage = () => {
                 </div>
               </div>
             )}
-
-          {isCurrentThreadStreaming && streamingThinking.trim().length > 0 && (
-            <div className="sf-chat-bubble assistant thinking">
-              <div className="sf-chat-bubble-role">
-                {selectedAgent?.displayName || 'AI'} Thinking
-              </div>
-              <div className="sf-chat-bubble-content sf-chat-thinking-content sf-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {streamingThinking}
-                </ReactMarkdown>
-              </div>
-            </div>
-          )}
-
-          {isCurrentThreadStreaming && streamingAssistantContent.length > 0 && (
-            <div className="sf-chat-bubble assistant">
-              <div className="sf-chat-bubble-role">
-                {selectedAgent?.displayName || 'AI'}
-              </div>
-              <div className="sf-chat-bubble-content sf-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {streamingAssistantContent}
-                </ReactMarkdown>
-                <span className="sf-chat-cursor" />
-              </div>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>

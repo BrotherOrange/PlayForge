@@ -130,7 +130,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         return Flux.create(sink -> {
             StringBuilder fullResponse = new StringBuilder();
             StringBuilder fullThinking = new StringBuilder();
-            startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0);
+            startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0, false);
 
             sink.onCancel(() -> {
                 log.info("流式聊天被取消, threadId={}", threadId);
@@ -155,6 +155,14 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         return Flux.create(sink -> {
             try {
                 Consumer<AgentStreamEvent> progressCallback = event -> {
+                    if (AgentStreamEvent.TYPE_PROGRESS.equals(event.type())
+                            && event.content() != null
+                            && !event.content().isBlank()) {
+                        transactionTemplate.executeWithoutResult(status -> {
+                            saveToolMessage(threadId, AgentStreamEvent.TYPE_PROGRESS, event.content());
+                            updateThreadStats(threadId, 1);
+                        });
+                    }
                     if (!sink.isCancelled()) {
                         sink.next(event);
                     }
@@ -166,7 +174,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
                 StringBuilder fullResponse = new StringBuilder();
                 StringBuilder fullThinking = new StringBuilder();
-                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0);
+                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, 0, true);
 
                 sink.onCancel(() -> {
                     log.info("带进度流式聊天被取消, threadId={}", threadId);
@@ -298,6 +306,16 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         agentMessageRepository.insert(assistantMsg);
     }
 
+    private void saveToolMessage(Long threadId, String toolName, String content) {
+        AgentMessage toolMsg = new AgentMessage();
+        toolMsg.setThreadId(threadId);
+        toolMsg.setRole("tool");
+        toolMsg.setToolName(toolName);
+        toolMsg.setContent(content);
+        toolMsg.setTokenCount(0);
+        agentMessageRepository.insert(toolMsg);
+    }
+
     private void saveMessages(Long threadId, String userContent, String assistantContent) {
         AgentMessage userMsg = new AgentMessage();
         userMsg.setThreadId(threadId);
@@ -344,8 +362,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                                          FluxSink<AgentStreamEvent> sink,
                                          StringBuilder fullResponse,
                                          StringBuilder fullThinking,
-                                         int attempt) {
-        if (sink.isCancelled()) {
+                                         int attempt,
+                                         boolean persistWhenClientDisconnected) {
+        if (sink.isCancelled() && !persistWhenClientDisconnected) {
             return;
         }
 
@@ -365,7 +384,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     sink.error(error);
                     return;
                 }
-                startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, attempt + 1);
+                startStreamingWithRetry(
+                        agent, message, threadId, sink, fullResponse, fullThinking,
+                        attempt + 1, persistWhenClientDisconnected);
                 return;
             }
             sink.error(error);
@@ -373,14 +394,16 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         }
         tokenStream
                 .onPartialResponse(token -> {
-                    if (sink.isCancelled()) {
+                    if ((sink.isCancelled() && !persistWhenClientDisconnected) || token == null || token.isBlank()) {
                         return;
                     }
                     fullResponse.append(token);
-                    sink.next(AgentStreamEvent.token(token));
+                    if (!sink.isCancelled()) {
+                        sink.next(AgentStreamEvent.token(token));
+                    }
                 })
                 .onPartialThinking(partialThinking -> {
-                    if (sink.isCancelled() || partialThinking == null) {
+                    if ((sink.isCancelled() && !persistWhenClientDisconnected) || partialThinking == null) {
                         return;
                     }
                     String thinkingText = partialThinking.text();
@@ -388,26 +411,39 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                         return;
                     }
                     fullThinking.append(thinkingText);
-                    sink.next(AgentStreamEvent.thinking(thinkingText));
+                    if (!sink.isCancelled()) {
+                        sink.next(AgentStreamEvent.thinking(thinkingText));
+                    }
                 })
                 .onCompleteResponse(resp -> {
-                    if (sink.isCancelled()) {
+                    if (sink.isCancelled() && !persistWhenClientDisconnected) {
                         return;
                     }
-                    emitCompletionFallbackIfNeeded(threadId, sink, fullResponse, fullThinking, resp);
+                    boolean emitToClient = !sink.isCancelled();
+                    emitCompletionFallbackIfNeeded(
+                            threadId, sink, fullResponse, fullThinking, resp, emitToClient);
                     try {
+                        String thinkingToSave = fullThinking.toString().trim();
                         transactionTemplate.executeWithoutResult(status -> {
                             // User message already saved before stream started
+                            int delta = 0;
+                            if (!thinkingToSave.isBlank()) {
+                                saveToolMessage(threadId, AgentStreamEvent.TYPE_THINKING, thinkingToSave);
+                                delta += 1;
+                            }
                             saveAssistantMessage(threadId, fullResponse.toString());
-                            updateThreadStats(threadId, 1);
+                            delta += 1;
+                            updateThreadStats(threadId, delta);
                         });
                     } catch (Exception e) {
                         log.error("保存消息失败, threadId={}", threadId, e);
                     }
-                    sink.complete();
+                    if (!sink.isCancelled()) {
+                        sink.complete();
+                    }
                 })
                 .onError(error -> {
-                    if (sink.isCancelled()) {
+                    if (sink.isCancelled() && !persistWhenClientDisconnected) {
                         return;
                     }
                     boolean canRetry = isRetryableError(error)
@@ -422,11 +458,15 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                             sink.error(error);
                             return;
                         }
-                        startStreamingWithRetry(agent, message, threadId, sink, fullResponse, fullThinking, attempt + 1);
+                        startStreamingWithRetry(
+                                agent, message, threadId, sink, fullResponse, fullThinking,
+                                attempt + 1, persistWhenClientDisconnected);
                         return;
                     }
                     log.error("流式聊天错误, threadId={}", threadId, error);
-                    sink.error(error);
+                    if (!sink.isCancelled()) {
+                        sink.error(error);
+                    }
                 })
                 .start();
     }
@@ -439,12 +479,15 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                                                 FluxSink<AgentStreamEvent> sink,
                                                 StringBuilder fullResponse,
                                                 StringBuilder fullThinking,
-                                                ChatResponse completeResponse) {
+                                                ChatResponse completeResponse,
+                                                boolean emitToClient) {
         if (fullThinking.isEmpty()) {
             String completionThinking = extractCompletionThinking(completeResponse);
             if (!completionThinking.isBlank()) {
                 fullThinking.append(completionThinking);
-                sink.next(AgentStreamEvent.thinking(completionThinking));
+                if (emitToClient) {
+                    sink.next(AgentStreamEvent.thinking(completionThinking));
+                }
             }
         }
 
@@ -455,7 +498,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         String completionText = extractCompletionText(completeResponse);
         if (!completionText.isBlank()) {
             fullResponse.append(completionText);
-            sink.next(AgentStreamEvent.token(completionText));
+            if (emitToClient) {
+                sink.next(AgentStreamEvent.token(completionText));
+            }
             return;
         }
 
@@ -465,7 +510,9 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     "已派发 %d 个子Agent任务，正在处理中。请稍候，我会继续汇总结果。",
                     taskManager.pendingCount());
             fullResponse.append(progressHint);
-            sink.next(AgentStreamEvent.token(progressHint));
+            if (emitToClient) {
+                sink.next(AgentStreamEvent.token(progressHint));
+            }
         }
     }
 
