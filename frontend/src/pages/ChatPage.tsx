@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, KeyboardEvent } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { message, Modal } from 'antd';
 import {
@@ -10,11 +10,15 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   LockOutlined,
+  TeamOutlined,
+  LeftOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { listAgents, createAgentWithThread, deleteAgent, getMessages } from '../api/chat';
 import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
+import TeamPanel from '../components/TeamPanel';
+import { getAgentLabel, getAgentColor, getAgentTypeFromName } from '../constants/agentTypes';
 import { AgentDefinition, AgentMessage, UserProfile } from '../types/api';
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -39,8 +43,8 @@ const ChatPage = () => {
   const { user } = useOutletContext<{ user: UserProfile | null }>();
   const isAdmin = user?.isAdmin === true;
 
-  // agents = user's conversations (each agent = one conversation with a model)
-  const [agents, setAgents] = useState<AgentDefinition[]>([]);
+  // All agents (lead + sub)
+  const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
@@ -49,12 +53,49 @@ const ChatPage = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [creatingAgent, setCreatingAgent] = useState(false);
+  const [teamPanelOpen, setTeamPanelOpen] = useState(false);
 
   const streamingRef = useRef('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const activeThreadId = selectedAgent?.threadId ?? null;
+
+  // Derived: lead agents (no parentThreadId)
+  const leadAgents = useMemo(
+    () => allAgents.filter((a) => !a.parentThreadId),
+    [allAgents]
+  );
+
+  // Derived: sub-agents grouped by parentThreadId
+  const subAgentsMap = useMemo(() => {
+    const map = new Map<string, AgentDefinition[]>();
+    for (const agent of allAgents) {
+      if (agent.parentThreadId) {
+        const list = map.get(agent.parentThreadId) || [];
+        list.push(agent);
+        map.set(agent.parentThreadId, list);
+      }
+    }
+    return map;
+  }, [allAgents]);
+
+  // Current lead agent (either selected or parent of selected sub-agent)
+  const currentLeadAgent = useMemo(() => {
+    if (!selectedAgent) return null;
+    if (!selectedAgent.parentThreadId) return selectedAgent;
+    return leadAgents.find((a) => a.threadId === selectedAgent.parentThreadId) ?? null;
+  }, [selectedAgent, leadAgents]);
+
+  // Sub-agents for the current lead agent
+  const currentSubAgents = useMemo(() => {
+    const threadId = currentLeadAgent?.threadId;
+    if (!threadId) return [];
+    return subAgentsMap.get(threadId) || [];
+  }, [currentLeadAgent, subAgentsMap]);
+
+  // Whether selected agent is a sub-agent
+  const isSubAgent = !!selectedAgent?.parentThreadId;
 
   // Auto-scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -65,10 +106,10 @@ const ChatPage = () => {
     scrollToBottom();
   }, [messages, streamingContent, scrollToBottom]);
 
-  // Load agents (conversations) on mount
+  // Load agents
   const loadAgents = useCallback(() => {
     listAgents()
-      .then((res) => setAgents(res.data.data))
+      .then((res) => setAllAgents(res.data.data))
       .catch(() => message.error('Failed to load conversations'));
   }, []);
 
@@ -96,7 +137,6 @@ const ChatPage = () => {
     streamingRef.current = '';
     setStreamingContent('');
     setIsStreaming(false);
-    // Refresh agent list to update state
     loadAgents();
   }, [loadAgents]);
 
@@ -114,11 +154,26 @@ const ChatPage = () => {
     onError,
   });
 
+  // Initial load
   useEffect(() => {
     loadAgents();
   }, [loadAgents]);
 
-  // Load messages when selected agent (conversation) changes
+  // Poll agents while streaming (to detect sub-agent creation)
+  useEffect(() => {
+    if (!isStreaming) return;
+    const timer = setInterval(loadAgents, 4000);
+    return () => clearInterval(timer);
+  }, [isStreaming, loadAgents]);
+
+  // Auto-open team panel when sub-agents appear
+  useEffect(() => {
+    if (currentSubAgents.length > 0 && !isSubAgent) {
+      setTeamPanelOpen(true);
+    }
+  }, [currentSubAgents.length, isSubAgent]);
+
+  // Load messages when selected agent changes
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([]);
@@ -129,9 +184,7 @@ const ChatPage = () => {
     getMessages(activeThreadId, 50, 0, controller.signal)
       .then((res) => setMessages(res.data.data))
       .catch((error) => {
-        if ((error as { code?: string }).code === 'ERR_CANCELED') {
-          return;
-        }
+        if ((error as { code?: string }).code === 'ERR_CANCELED') return;
         setMessages([]);
       });
 
@@ -143,6 +196,12 @@ const ChatPage = () => {
     setSelectedAgent(agent);
     setStreamingContent('');
     streamingRef.current = '';
+  };
+
+  const handleBackToLead = () => {
+    if (currentLeadAgent) {
+      handleSelectAgent(currentLeadAgent);
+    }
   };
 
   const handleNewChat = () => {
@@ -159,8 +218,7 @@ const ChatPage = () => {
         displayName: model.displayName,
       });
       const { agent } = res.data.data;
-      // agent already has threadId set from the response
-      setAgents((prev) => [agent, ...prev]);
+      setAllAgents((prev) => [agent, ...prev]);
       setSelectedAgent(agent);
       setMessages([]);
       setStreamingContent('');
@@ -176,11 +234,19 @@ const ChatPage = () => {
     e.stopPropagation();
     try {
       await deleteAgent(agent.id);
-      setAgents((prev) => prev.filter((a) => a.id !== agent.id));
-      if (selectedAgent?.id === agent.id) {
+      // Remove lead agent and its sub-agents (backend cascade-deletes them)
+      const deletedThreadId = agent.threadId;
+      setAllAgents((prev) =>
+        prev.filter((a) => a.id !== agent.id && a.parentThreadId !== deletedThreadId)
+      );
+      if (
+        selectedAgent?.id === agent.id ||
+        selectedAgent?.parentThreadId === deletedThreadId
+      ) {
         setSelectedAgent(null);
         setMessages([]);
       }
+      setTeamPanelOpen(false);
     } catch {
       message.error('Failed to delete conversation');
     }
@@ -226,6 +292,11 @@ const ChatPage = () => {
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   };
 
+  // Check if a lead agent has sub-agents
+  const hasSubAgents = (agent: AgentDefinition) => {
+    return agent.threadId ? (subAgentsMap.get(agent.threadId)?.length ?? 0) > 0 : false;
+  };
+
   return (
     <div className="sf-chat-layout">
       {/* Sidebar */}
@@ -244,35 +315,77 @@ const ChatPage = () => {
           {/* Conversation List */}
           <div className="sf-chat-section-label">CONVERSATIONS</div>
           <div className="sf-chat-thread-list">
-            {agents.length === 0 && (
+            {leadAgents.length === 0 && (
               <div className="sf-chat-empty-hint">No conversations yet</div>
             )}
-            {agents.map((agent) => (
-              <div
-                key={agent.id}
-                className={`sf-chat-thread-item ${selectedAgent?.id === agent.id ? 'active' : ''}`}
-                onClick={() => handleSelectAgent(agent)}
-              >
-                <span
-                  className="sf-provider-dot"
-                  style={{ background: PROVIDER_COLORS[agent.provider] || '#666' }}
-                />
-                <div className="sf-chat-thread-info">
-                  <span className="sf-chat-thread-title">
-                    {agent.displayName || agent.name}
-                  </span>
-                  <span className="sf-chat-thread-meta">
-                    {PROVIDER_LABELS[agent.provider] || agent.provider}
-                  </span>
+            {leadAgents.map((agent) => {
+              const agentSubAgents = agent.threadId
+                ? subAgentsMap.get(agent.threadId) || []
+                : [];
+              const isSelected = selectedAgent?.id === agent.id;
+              const isParentOfSelected =
+                selectedAgent?.parentThreadId === agent.threadId;
+
+              return (
+                <div key={agent.id} className="sf-chat-thread-group">
+                  {/* Lead Agent Item */}
+                  <div
+                    className={`sf-chat-thread-item ${isSelected || isParentOfSelected ? 'active' : ''}`}
+                    onClick={() => handleSelectAgent(agent)}
+                  >
+                    <span
+                      className="sf-provider-dot"
+                      style={{
+                        background: PROVIDER_COLORS[agent.provider] || '#666',
+                      }}
+                    />
+                    <div className="sf-chat-thread-info">
+                      <span className="sf-chat-thread-title">
+                        {agent.displayName || agent.name}
+                      </span>
+                      <span className="sf-chat-thread-meta">
+                        {PROVIDER_LABELS[agent.provider] || agent.provider}
+                        {agentSubAgents.length > 0 && (
+                          <span className="sf-chat-team-badge">
+                            <TeamOutlined /> {agentSubAgents.length}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      className="sf-chat-thread-delete"
+                      onClick={(e) => handleDeleteAgent(agent, e)}
+                    >
+                      <DeleteOutlined />
+                    </button>
+                  </div>
+
+                  {/* Sub-Agent Items (shown when this lead is active) */}
+                  {(isSelected || isParentOfSelected) &&
+                    agentSubAgents.length > 0 && (
+                      <div className="sf-sidebar-subagents">
+                        {agentSubAgents.map((sub) => (
+                          <div
+                            key={sub.id}
+                            className={`sf-sidebar-subagent-item ${selectedAgent?.id === sub.id ? 'active' : ''}`}
+                            onClick={() => handleSelectAgent(sub)}
+                          >
+                            <span
+                              className="sf-subagent-type-dot"
+                              style={{
+                                background: getAgentColor(sub.name),
+                              }}
+                            />
+                            <span className="sf-sidebar-subagent-name">
+                              {getAgentLabel(sub.name)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                 </div>
-                <button
-                  className="sf-chat-thread-delete"
-                  onClick={(e) => handleDeleteAgent(agent, e)}
-                >
-                  <DeleteOutlined />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -290,17 +403,54 @@ const ChatPage = () => {
         {/* Chat Header */}
         {selectedAgent && (
           <div className="sf-chat-header">
-            <RobotOutlined style={{ fontSize: 18, marginRight: 8, color: 'var(--sf-primary)' }} />
+            {/* Breadcrumb for sub-agents */}
+            {isSubAgent && currentLeadAgent && (
+              <button className="sf-chat-breadcrumb" onClick={handleBackToLead}>
+                <LeftOutlined />
+                <span>{currentLeadAgent.displayName || currentLeadAgent.name}</span>
+              </button>
+            )}
+            <RobotOutlined
+              style={{ fontSize: 18, marginRight: 8, color: 'var(--sf-primary)' }}
+            />
             <span className="sf-chat-header-name">
-              {selectedAgent.displayName || selectedAgent.name}
+              {isSubAgent
+                ? getAgentLabel(selectedAgent.name)
+                : selectedAgent.displayName || selectedAgent.name}
             </span>
-            <span
-              className="sf-provider-tag"
-              style={{ background: PROVIDER_COLORS[selectedAgent.provider] || '#666' }}
-            >
-              {PROVIDER_LABELS[selectedAgent.provider] || selectedAgent.provider}
-            </span>
+            {!isSubAgent && (
+              <span
+                className="sf-provider-tag"
+                style={{
+                  background: PROVIDER_COLORS[selectedAgent.provider] || '#666',
+                }}
+              >
+                {PROVIDER_LABELS[selectedAgent.provider] || selectedAgent.provider}
+              </span>
+            )}
+            {isSubAgent && (
+              <span
+                className="sf-subagent-header-type"
+                style={{ color: getAgentColor(selectedAgent.name) }}
+              >
+                {getAgentTypeFromName(selectedAgent.name)}
+              </span>
+            )}
             <span className="sf-chat-header-model">{selectedAgent.modelName}</span>
+
+            {/* Team panel toggle */}
+            {!isSubAgent && hasSubAgents(selectedAgent) && (
+              <button
+                className={`sf-team-toggle-btn ${teamPanelOpen ? 'active' : ''}`}
+                onClick={() => setTeamPanelOpen(!teamPanelOpen)}
+                title="Toggle team panel"
+              >
+                <TeamOutlined />
+                <span className="sf-team-toggle-count">
+                  {currentSubAgents.length}
+                </span>
+              </button>
+            )}
           </div>
         )}
 
@@ -308,7 +458,9 @@ const ChatPage = () => {
         <div className="sf-chat-messages">
           {!selectedAgent && (
             <div className="sf-chat-welcome">
-              <RobotOutlined style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }} />
+              <RobotOutlined
+                style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }}
+              />
               <h2>Welcome to PlayForge AI Chat</h2>
               {isAdmin ? (
                 <p>Click "New Chat" to select a model and start a conversation.</p>
@@ -323,7 +475,9 @@ const ChatPage = () => {
 
           {selectedAgent && messages.length === 0 && !isStreaming && (
             <div className="sf-chat-welcome">
-              <RobotOutlined style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }} />
+              <RobotOutlined
+                style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }}
+              />
               <h2>Start a conversation</h2>
               <p>Type a message below to begin.</p>
             </div>
@@ -346,7 +500,9 @@ const ChatPage = () => {
                 {selectedAgent?.displayName || 'AI'}
               </div>
               <div className="sf-chat-bubble-content sf-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {streamingContent}
+                </ReactMarkdown>
                 <span className="sf-chat-cursor" />
               </div>
             </div>
@@ -393,6 +549,15 @@ const ChatPage = () => {
           </div>
         )}
       </div>
+
+      {/* Team Panel (right sidebar) */}
+      {teamPanelOpen && !isSubAgent && currentSubAgents.length > 0 && (
+        <TeamPanel
+          subAgents={currentSubAgents}
+          onSelectAgent={handleSelectAgent}
+          onClose={() => setTeamPanelOpen(false)}
+        />
+      )}
 
       {/* Model Picker Modal */}
       <Modal

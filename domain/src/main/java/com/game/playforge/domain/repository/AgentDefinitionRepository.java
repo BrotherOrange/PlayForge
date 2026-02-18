@@ -44,6 +44,14 @@ public interface AgentDefinitionRepository {
     List<AgentDefinition> findByUserId(Long userId);
 
     /**
+     * 根据父线程ID查询子Agent定义
+     *
+     * @param parentThreadId 父线程ID
+     * @return 子Agent定义列表
+     */
+    List<AgentDefinition> findByParentThreadId(Long parentThreadId);
+
+    /**
      * 新增Agent定义
      *
      * @param agentDefinition Agent定义实体

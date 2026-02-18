@@ -2,12 +2,9 @@ package com.game.playforge.api.controller;
 
 import com.game.playforge.api.dto.request.CreateAgentRequest;
 import com.game.playforge.api.dto.request.CreateAgentWithThreadRequest;
-import com.game.playforge.api.dto.request.CreateSkillRequest;
 import com.game.playforge.api.dto.response.AgentDefinitionResponse;
-import com.game.playforge.api.dto.response.AgentThreadResponse;
 import com.game.playforge.api.dto.response.CreateAgentWithThreadResponse;
 import com.game.playforge.api.mapper.AgentDefinitionMapper;
-import com.game.playforge.api.mapper.AgentSkillMapper;
 import com.game.playforge.api.mapper.AgentThreadMapper;
 import com.game.playforge.application.service.AgentManagementService;
 import com.game.playforge.application.service.AgentManagementService.AgentWithThread;
@@ -17,7 +14,6 @@ import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ApiResult;
 import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentDefinition;
-import com.game.playforge.domain.model.AgentSkill;
 import com.game.playforge.domain.model.AgentThread;
 import com.game.playforge.domain.model.User;
 import com.game.playforge.domain.repository.AgentThreadRepository;
@@ -48,7 +44,6 @@ public class AgentController {
     private final UserService userService;
     private final AgentDefinitionMapper agentDefinitionMapper;
     private final AgentThreadMapper agentThreadMapper;
-    private final AgentSkillMapper agentSkillMapper;
 
     private void requireAdmin(Long userId) {
         User user = userService.getProfile(userId);
@@ -139,21 +134,6 @@ public class AgentController {
         log.info("删除Agent, userId={}, agentId={}", userId, id);
         agentManagementService.deleteAgent(userId, id);
         return ApiResult.success(null);
-    }
-
-    /**
-     * 创建技能
-     */
-    @PostMapping("/skills")
-    public ApiResult<AgentSkill> createSkill(
-            HttpServletRequest httpRequest,
-            @Valid @RequestBody CreateSkillRequest request) {
-        Long userId = (Long) httpRequest.getAttribute(AuthConstants.CURRENT_USER_ID);
-        requireAdmin(userId);
-        log.info("创建技能, userId={}, name={}", userId, request.getName());
-        AgentSkill skill = agentSkillMapper.fromCreateRequest(request);
-        AgentSkill created = agentManagementService.createSkill(skill);
-        return ApiResult.success(created);
     }
 
 }

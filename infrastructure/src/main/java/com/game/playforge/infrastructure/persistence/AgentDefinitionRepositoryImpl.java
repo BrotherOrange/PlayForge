@@ -68,6 +68,17 @@ public class AgentDefinitionRepositoryImpl implements AgentDefinitionRepository 
     }
 
     @Override
+    public List<AgentDefinition> findByParentThreadId(Long parentThreadId) {
+        log.debug("根据父线程ID查询子Agent定义, parentThreadId={}", parentThreadId);
+        List<AgentDefinition> definitions = agentDefinitionMapper.selectList(
+                new LambdaQueryWrapper<AgentDefinition>()
+                        .eq(AgentDefinition::getParentThreadId, parentThreadId)
+                        .orderByDesc(AgentDefinition::getCreatedAt));
+        log.debug("根据父线程ID查询子Agent定义, parentThreadId={}, count={}", parentThreadId, definitions.size());
+        return definitions;
+    }
+
+    @Override
     public void insert(AgentDefinition agentDefinition) {
         log.info("新增Agent定义, name={}", agentDefinition.getName());
         agentDefinitionMapper.insert(agentDefinition);

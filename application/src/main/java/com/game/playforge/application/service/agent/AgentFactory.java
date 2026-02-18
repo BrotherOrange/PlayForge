@@ -5,10 +5,11 @@ import com.game.playforge.common.enums.ModelProvider;
 import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentDefinition;
-import com.game.playforge.domain.model.AgentSkill;
-import com.game.playforge.domain.repository.AgentSkillRepository;
+import com.game.playforge.infrastructure.external.ai.AgentTypeRegistry;
 import com.game.playforge.infrastructure.external.ai.ModelProviderRegistry;
 import com.game.playforge.infrastructure.external.ai.RedisChatMemoryStore;
+import com.game.playforge.infrastructure.external.ai.SkillRegistry;
+import com.game.playforge.infrastructure.external.ai.SkillRegistry.SkillDescriptor;
 import com.game.playforge.infrastructure.external.ai.SystemPromptResolver;
 import com.game.playforge.infrastructure.external.ai.ToolRegistry;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -19,10 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -30,6 +28,8 @@ import java.util.stream.Collectors;
  * <p>
  * 根据Agent定义动态构建LangChain4J AiService代理实例，
  * 组装模型、记忆、提示词和工具。
+ * 技能采用目录模式：system prompt中只注入轻量级目录，
+ * LLM通过调用loadSkill工具按需加载完整内容。
  * </p>
  *
  * @author Richard Zhang
@@ -43,7 +43,8 @@ public class AgentFactory {
     private final ModelProviderRegistry modelProviderRegistry;
     private final SystemPromptResolver systemPromptResolver;
     private final ToolRegistry toolRegistry;
-    private final AgentSkillRepository agentSkillRepository;
+    private final SkillRegistry skillRegistry;
+    private final AgentTypeRegistry agentTypeRegistry;
     private final RedisChatMemoryStore redisChatMemoryStore;
 
     /**
@@ -51,17 +52,22 @@ public class AgentFactory {
      *
      * @param definition Agent定义
      * @param threadId   会话ID（用于绑定记忆）
+     * @param userId     用户ID（用于判断是否注入子Agent工具，null表示不注入）
+     * @param extraTools 额外工具实例（如SubAgentTool）
      * @return 同步聊天代理
      */
-    public AgentChatService createAgent(AgentDefinition definition, Long threadId) {
+    public AgentChatService createAgent(AgentDefinition definition, Long threadId,
+                                        Long userId, List<Object> extraTools) {
         log.info("创建同步Agent, agent={}, threadId={}", definition.getName(), threadId);
 
         ModelProvider provider = resolveProvider(definition.getProvider());
         ChatModel chatModel = modelProviderRegistry.getChatModel(provider);
-        List<AgentSkill> skills = loadSkills(definition);
-        String systemPrompt = systemPromptResolver.resolve(definition, skills);
+        List<String> skillNameList = parseSkillNames(definition);
+        boolean hasSubAgentTool = hasSubAgentTool(definition);
+        String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
+        String systemPrompt = systemPromptResolver.resolve(definition, additionalContext);
         MessageWindowChatMemory memory = buildMemory(definition, threadId);
-        List<Object> tools = collectTools(definition, skills);
+        List<Object> tools = collectTools(definition, skillNameList, extraTools);
 
         AiServices<AgentChatService> builder = AiServices.builder(AgentChatService.class)
                 .chatModel(chatModel)
@@ -85,17 +91,22 @@ public class AgentFactory {
      *
      * @param definition Agent定义
      * @param threadId   会话ID（用于绑定记忆）
+     * @param userId     用户ID（用于判断是否注入子Agent工具，null表示不注入）
+     * @param extraTools 额外工具实例（如SubAgentTool）
      * @return 流式聊天代理
      */
-    public AgentStreamingChatService createStreamingAgent(AgentDefinition definition, Long threadId) {
+    public AgentStreamingChatService createStreamingAgent(AgentDefinition definition, Long threadId,
+                                                          Long userId, List<Object> extraTools) {
         log.info("创建流式Agent, agent={}, threadId={}", definition.getName(), threadId);
 
         ModelProvider provider = resolveProvider(definition.getProvider());
         StreamingChatModel streamingModel = modelProviderRegistry.getStreamingChatModel(provider);
-        List<AgentSkill> skills = loadSkills(definition);
-        String systemPrompt = systemPromptResolver.resolve(definition, skills);
+        List<String> skillNameList = parseSkillNames(definition);
+        boolean hasSubAgentTool = hasSubAgentTool(definition);
+        String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
+        String systemPrompt = systemPromptResolver.resolve(definition, additionalContext);
         MessageWindowChatMemory memory = buildMemory(definition, threadId);
-        List<Object> tools = collectTools(definition, skills);
+        List<Object> tools = collectTools(definition, skillNameList, extraTools);
 
         AiServices<AgentStreamingChatService> builder = AiServices.builder(AgentStreamingChatService.class)
                 .streamingChatModel(streamingModel)
@@ -114,16 +125,43 @@ public class AgentFactory {
         return builder.build();
     }
 
-    private List<AgentSkill> loadSkills(AgentDefinition definition) {
-        if (definition.getSkillIds() == null || definition.getSkillIds().isBlank()) {
+    private boolean hasSubAgentTool(AgentDefinition definition) {
+        if (definition.getToolNames() == null || definition.getToolNames().isBlank()) {
+            return false;
+        }
+        return Arrays.stream(definition.getToolNames().split(","))
+                .map(String::trim)
+                .anyMatch("subAgentTool"::equals);
+    }
+
+    private String buildAdditionalContext(List<String> skillNameList, boolean hasSubAgentTool) {
+        StringBuilder sb = new StringBuilder();
+
+        // 技能目录
+        String skillCatalog = skillRegistry.getSkillCatalog(skillNameList);
+        if (skillCatalog != null && !skillCatalog.isBlank()) {
+            sb.append(skillCatalog);
+        }
+
+        // Agent类型目录（仅Lead Agent有subAgentTool时注入）
+        if (hasSubAgentTool) {
+            if (!sb.isEmpty()) {
+                sb.append("\n\n");
+            }
+            sb.append(agentTypeRegistry.getTypeCatalog());
+        }
+
+        return sb.toString();
+    }
+
+    private List<String> parseSkillNames(AgentDefinition definition) {
+        if (definition.getSkillNames() == null || definition.getSkillNames().isBlank()) {
             return Collections.emptyList();
         }
-        List<Long> skillIds = Arrays.stream(definition.getSkillIds().split(","))
+        return Arrays.stream(definition.getSkillNames().split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .map(Long::parseLong)
                 .collect(Collectors.toList());
-        return agentSkillRepository.findByIds(skillIds);
     }
 
     private MessageWindowChatMemory buildMemory(AgentDefinition definition, Long threadId) {
@@ -137,24 +175,48 @@ public class AgentFactory {
                 .build();
     }
 
-    private List<Object> collectTools(AgentDefinition definition, List<AgentSkill> skills) {
-        List<String> toolNames = new ArrayList<>();
+    private List<Object> collectTools(AgentDefinition definition, List<String> skillNameList,
+                                      List<Object> extraTools) {
+        Set<String> toolNames = new LinkedHashSet<>();
 
+        // 1. Agent自身配置的工具
         if (definition.getToolNames() != null && !definition.getToolNames().isBlank()) {
-            toolNames.addAll(Arrays.asList(definition.getToolNames().split(",")));
+            Arrays.stream(definition.getToolNames().split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .forEach(toolNames::add);
         }
 
-        for (AgentSkill skill : skills) {
-            if (skill.getToolNames() != null && !skill.getToolNames().isBlank()) {
-                toolNames.addAll(Arrays.asList(skill.getToolNames().split(",")));
+        // 2. 移除subAgentTool（不在ToolRegistry中，由extraTools提供）
+        toolNames.remove("subAgentTool");
+
+        // 3. 如果有技能配置，自动加入 skillLoaderTool
+        List<SkillDescriptor> skills = skillRegistry.getSkills(skillNameList);
+        if (!skills.isEmpty()) {
+            toolNames.add("skillLoaderTool");
+        }
+
+        // 4. 收集各技能引用的外部工具
+        for (SkillDescriptor skill : skills) {
+            toolNames.addAll(skill.toolNames());
+        }
+
+        // 5. 从 ToolRegistry 获取工具 Bean
+        List<Object> tools = new ArrayList<>(toolRegistry.getToolBeans(new ArrayList<>(toolNames)));
+
+        // 6. 加入技能自身的 @Tool Bean（selfToolBean）
+        for (SkillDescriptor skill : skills) {
+            if (skill.selfToolBean() != null) {
+                tools.add(skill.selfToolBean());
             }
         }
 
-        return toolRegistry.getToolBeans(toolNames.stream()
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .collect(Collectors.toList()));
+        // 7. 加入额外工具（如SubAgentTool实例）
+        if (extraTools != null) {
+            tools.addAll(extraTools);
+        }
+
+        return tools;
     }
 
     private ModelProvider resolveProvider(String provider) {

@@ -70,9 +70,14 @@ public class AgentDefinition {
     private String toolNames;
 
     /**
-     * 技能ID列表（逗号分隔）
+     * 技能名称列表（逗号分隔，引用代码定义的@Skill）
      */
-    private String skillIds;
+    private String skillNames;
+
+    /**
+     * 父线程ID（子Agent由Lead Agent在此线程内创建）
+     */
+    private Long parentThreadId;
 
     /**
      * 记忆窗口大小（消息条数）

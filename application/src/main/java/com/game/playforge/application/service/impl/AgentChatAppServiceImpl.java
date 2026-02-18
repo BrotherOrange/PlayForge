@@ -5,6 +5,7 @@ import com.game.playforge.application.service.AgentChatAppService;
 import com.game.playforge.application.service.agent.AgentChatService;
 import com.game.playforge.application.service.agent.AgentFactory;
 import com.game.playforge.application.service.agent.AgentStreamingChatService;
+import com.game.playforge.application.service.agent.SubAgentService;
 import com.game.playforge.common.constant.AgentConstants;
 import com.game.playforge.common.enums.ThreadStatus;
 import com.game.playforge.common.exception.BusinessException;
@@ -15,26 +16,33 @@ import com.game.playforge.domain.model.AgentThread;
 import com.game.playforge.domain.repository.AgentDefinitionRepository;
 import com.game.playforge.domain.repository.AgentMessageRepository;
 import com.game.playforge.domain.repository.AgentThreadRepository;
+import com.game.playforge.infrastructure.external.ai.AsyncTaskManager;
 import com.game.playforge.infrastructure.external.ai.RedisChatMemoryStore;
+import com.game.playforge.application.service.agent.tools.SubAgentTool;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.service.TokenStream;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Agent聊天应用服务实现
  * <p>
  * 提供同步和流式聊天能力，包含线程恢复逻辑和消息持久化。
+ * 支持Lead Agent的子Agent工具注入。
  * </p>
  *
  * @author Richard Zhang
@@ -42,7 +50,6 @@ import java.util.List;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AgentChatAppServiceImpl implements AgentChatAppService {
 
     private final AgentFactory agentFactory;
@@ -51,6 +58,24 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     private final AgentMessageRepository agentMessageRepository;
     private final RedisChatMemoryStore redisChatMemoryStore;
     private final TransactionTemplate transactionTemplate;
+    private final SubAgentService subAgentService;
+    private final Map<Long, AsyncTaskManager> taskManagers = new ConcurrentHashMap<>();
+
+    public AgentChatAppServiceImpl(AgentFactory agentFactory,
+                                   AgentThreadRepository agentThreadRepository,
+                                   AgentDefinitionRepository agentDefinitionRepository,
+                                   AgentMessageRepository agentMessageRepository,
+                                   RedisChatMemoryStore redisChatMemoryStore,
+                                   TransactionTemplate transactionTemplate,
+                                   @Lazy SubAgentService subAgentService) {
+        this.agentFactory = agentFactory;
+        this.agentThreadRepository = agentThreadRepository;
+        this.agentDefinitionRepository = agentDefinitionRepository;
+        this.agentMessageRepository = agentMessageRepository;
+        this.redisChatMemoryStore = redisChatMemoryStore;
+        this.transactionTemplate = transactionTemplate;
+        this.subAgentService = subAgentService;
+    }
 
     @Override
     public AgentChatResponse chat(Long userId, Long threadId, String message) {
@@ -61,7 +86,8 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         recoverMemoryIfNeeded(thread, definition);
 
-        AgentChatService agent = agentFactory.createAgent(definition, threadId);
+        List<Object> extraTools = buildExtraTools(definition, userId, threadId);
+        AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
         String response = agent.chat(message);
 
         transactionTemplate.executeWithoutResult(status -> {
@@ -82,7 +108,8 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         recoverMemoryIfNeeded(thread, definition);
 
-        AgentStreamingChatService agent = agentFactory.createStreamingAgent(definition, threadId);
+        List<Object> extraTools = buildExtraTools(definition, userId, threadId);
+        AgentStreamingChatService agent = agentFactory.createStreamingAgent(definition, threadId, userId, extraTools);
         TokenStream tokenStream = agent.chat(message);
 
         return Flux.create(sink -> {
@@ -114,6 +141,42 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                 log.info("流式聊天被取消, threadId={}", threadId);
             });
         });
+    }
+
+    /**
+     * 构建额外工具列表（如SubAgentTool）
+     */
+    private List<Object> buildExtraTools(AgentDefinition definition, Long userId, Long threadId) {
+        if (!hasSubAgentTool(definition)) {
+            AsyncTaskManager removed = taskManagers.remove(threadId);
+            if (removed != null) {
+                removed.shutdown();
+            }
+            return Collections.emptyList();
+        }
+
+        AsyncTaskManager taskManager = taskManagers.computeIfAbsent(threadId, ignored -> new AsyncTaskManager());
+        SubAgentTool subAgentTool = new SubAgentTool(userId, threadId, subAgentService, taskManager);
+
+        log.info("已注入SubAgentTool, userId={}, threadId={}", userId, threadId);
+        return List.of(subAgentTool);
+    }
+
+    @PreDestroy
+    public void shutdownTaskManagers() {
+        for (AsyncTaskManager manager : taskManagers.values()) {
+            manager.shutdown();
+        }
+        taskManagers.clear();
+    }
+
+    private boolean hasSubAgentTool(AgentDefinition definition) {
+        if (definition.getToolNames() == null || definition.getToolNames().isBlank()) {
+            return false;
+        }
+        return Arrays.stream(definition.getToolNames().split(","))
+                .map(String::trim)
+                .anyMatch("subAgentTool"::equals);
     }
 
     private AgentThread validateAndGetThread(Long userId, Long threadId) {

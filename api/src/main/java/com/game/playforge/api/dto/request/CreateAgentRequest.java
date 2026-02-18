@@ -31,7 +31,7 @@ public class CreateAgentRequest {
 
     private String toolNames;
 
-    private String skillIds;
+    private String skillNames;
 
     private Integer memoryWindowSize = 20;
 

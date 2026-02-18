@@ -1,15 +1,14 @@
 package com.game.playforge.application.service.impl;
 
 import com.game.playforge.application.service.AgentManagementService;
+import com.game.playforge.application.service.agent.SubAgentService;
 import com.game.playforge.common.enums.ModelProvider;
 import com.game.playforge.common.enums.ThreadStatus;
 import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentDefinition;
-import com.game.playforge.domain.model.AgentSkill;
 import com.game.playforge.domain.model.AgentThread;
 import com.game.playforge.domain.repository.AgentDefinitionRepository;
-import com.game.playforge.domain.repository.AgentSkillRepository;
 import com.game.playforge.domain.repository.AgentThreadRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,48 +30,11 @@ import java.util.UUID;
 public class AgentManagementServiceImpl implements AgentManagementService {
 
     private final AgentDefinitionRepository agentDefinitionRepository;
-    private final AgentSkillRepository agentSkillRepository;
     private final AgentThreadRepository agentThreadRepository;
+    private final SubAgentService subAgentService;
 
-    private static final String DEFAULT_SYSTEM_PROMPT = """
-            You are PlayForge, an elite AI game design studio. You operate as a full-scale, \
-            collaborative game design team — combining the roles of creative director, systems \
-            designer, narrative designer, level designer, UX designer, economy designer, and \
-            technical consultant — all in one unified intelligence.
-
-            ## Core Mission
-            Help users transform raw game ideas — no matter how vague or ambitious — into \
-            comprehensive, professional-grade game design documents (GDD). You guide every stage: \
-            from initial concept and vision, through core mechanics, narrative, level design, \
-            monetization, technical feasibility, all the way to a complete, production-ready plan.
-
-            ## How You Work
-            - **Listen first.** Understand the user's vision, inspirations, target audience, and constraints.
-            - **Ask smart questions.** Probe for clarity on genre, platform, scope, tone, and goals.
-            - **Think in systems.** Design interlocking mechanics that create emergent gameplay.
-            - **Be specific and actionable.** Provide concrete numbers, formulas, flow diagrams, \
-              progression curves, and economy models — not just high-level ideas.
-            - **Iterate collaboratively.** Propose, refine, and evolve designs through dialogue.
-
-            ## Your Expertise Covers
-            - **Concept & Vision:** Genre analysis, unique selling points, competitive landscape, target audience profiling.
-            - **Core Mechanics:** Gameplay loops, combat/interaction systems, progression, skill trees, crafting, AI behavior.
-            - **Narrative Design:** World-building, lore, character arcs, quest design, branching dialogue, environmental storytelling.
-            - **Level & World Design:** Map layouts, encounter pacing, exploration flow, puzzle design, spatial storytelling.
-            - **Systems & Economy:** Resource loops, in-game economy, loot tables, gacha/probability models, balance tuning.
-            - **UX & Monetization:** UI flow, onboarding, retention hooks, monetization ethics, live-ops strategy.
-            - **Technical Guidance:** Architecture recommendations, tech stack considerations, performance constraints.
-
-            ## Output Standards
-            - Structure documents with clear headings, numbered sections, and tables where appropriate.
-            - Use bullet points for mechanics breakdowns and numbered steps for processes.
-            - Include example values, formulas, and data tables for any numeric systems.
-            - When presenting alternatives, lay out pros/cons to help the user decide.
-
-            ## Language
-            Always respond in Chinese (中文). Use professional but accessible language. \
-            Game industry terminology may remain in English where conventional (e.g., GDD, MVP, roguelike, gacha).\
-            """;
+    private static final String LEAD_AGENT_PROMPT_REF = "agents/lead-designer.txt";
+    private static final String LEAD_AGENT_TOOL_NAMES = "subAgentTool";
 
 
     @Override
@@ -116,7 +78,8 @@ public class AgentManagementServiceImpl implements AgentManagementService {
         agent.setDisplayName(displayName != null ? displayName : modelName);
         agent.setProvider(normalizedProvider);
         agent.setModelName(modelName);
-        agent.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+        agent.setSystemPromptRef(LEAD_AGENT_PROMPT_REF);
+        agent.setToolNames(LEAD_AGENT_TOOL_NAMES);
         agent.setMemoryWindowSize(20);
         agent.setTemperature(0.7);
         agent.setMaxTokens(4096);
@@ -148,22 +111,18 @@ public class AgentManagementServiceImpl implements AgentManagementService {
         if (!userId.equals(agent.getUserId())) {
             throw new BusinessException(ResultCode.AGENT_ACCESS_DENIED);
         }
+
+        // 删除Lead Agent时，级联销毁其所有子Agent，避免产生不可见孤儿Agent
+        if (agent.getParentThreadId() == null) {
+            List<AgentThread> leadThreads = agentThreadRepository.findByUserIdAndAgentId(userId, agentId);
+            for (AgentThread leadThread : leadThreads) {
+                subAgentService.destroyAllByParentThread(userId, leadThread.getId());
+            }
+        }
+
         agent.setIsActive(false);
         agentDefinitionRepository.update(agent);
         log.info("软删除Agent成功, agentId={}", agentId);
-    }
-
-    @Override
-    public List<AgentSkill> listSkills() {
-        log.debug("查询所有启用的技能");
-        return agentSkillRepository.findAllActive();
-    }
-
-    @Override
-    public AgentSkill createSkill(AgentSkill agentSkill) {
-        log.info("创建技能, name={}", agentSkill.getName());
-        agentSkillRepository.insert(agentSkill);
-        return agentSkill;
     }
 
     private ModelProvider parseProvider(String provider) {

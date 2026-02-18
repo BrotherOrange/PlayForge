@@ -1,7 +1,6 @@
 package com.game.playforge.infrastructure.external.ai;
 
 import com.game.playforge.domain.model.AgentDefinition;
-import com.game.playforge.domain.model.AgentSkill;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ResourceLoader;
@@ -10,14 +9,13 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 系统提示词解析器
  * <p>
  * 根据Agent定义解析最终的系统提示词，支持内联文本和文件引用两种方式，
- * 并将关联技能的提示词片段拼接到基础提示词后面。
+ * 并将技能目录（轻量级）拼接到基础提示词后面。
  * </p>
  *
  * @author Richard Zhang
@@ -34,11 +32,11 @@ public class SystemPromptResolver {
     /**
      * 解析Agent的完整系统提示词
      *
-     * @param agent  Agent定义
-     * @param skills 关联的技能列表
+     * @param agent             Agent定义
+     * @param additionalContext 附加上下文（技能目录、类型目录等）
      * @return 完整的系统提示词
      */
-    public String resolve(AgentDefinition agent, List<AgentSkill> skills) {
+    public String resolve(AgentDefinition agent, String additionalContext) {
         // 优先使用内联提示词
         String basePrompt;
         if (agent.getSystemPrompt() != null && !agent.getSystemPrompt().isBlank()) {
@@ -52,15 +50,9 @@ public class SystemPromptResolver {
             log.warn("Agent未配置系统提示词, agent={}", agent.getName());
         }
 
-        // 拼接技能提示词片段
-        if (skills != null && !skills.isEmpty()) {
-            StringBuilder sb = new StringBuilder(basePrompt);
-            for (AgentSkill skill : skills) {
-                if (skill.getPromptFragment() != null && !skill.getPromptFragment().isBlank()) {
-                    sb.append("\n\n").append(skill.getPromptFragment());
-                }
-            }
-            return sb.toString();
+        // 拼接附加上下文
+        if (additionalContext != null && !additionalContext.isBlank()) {
+            return basePrompt + "\n\n" + additionalContext;
         }
 
         return basePrompt;

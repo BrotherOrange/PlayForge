@@ -1,7 +1,6 @@
 package com.game.playforge.application.service;
 
 import com.game.playforge.domain.model.AgentDefinition;
-import com.game.playforge.domain.model.AgentSkill;
 import com.game.playforge.domain.model.AgentThread;
 
 import java.util.List;
@@ -58,21 +57,6 @@ public interface AgentManagementService {
      * @param agentId Agent ID
      */
     void deleteAgent(Long userId, Long agentId);
-
-    /**
-     * 列出所有启用的技能
-     *
-     * @return 技能列表
-     */
-    List<AgentSkill> listSkills();
-
-    /**
-     * 创建技能
-     *
-     * @param agentSkill 技能实体
-     * @return 创建后的技能
-     */
-    AgentSkill createSkill(AgentSkill agentSkill);
 
     /**
      * Agent + Thread 组合结果
