@@ -46,7 +46,7 @@ export const chatThread = (threadId: string, message: string) =>
 
 /**
  * SSE-based chat with progress events.
- * Streams progress/response/done/error events from the server.
+ * Streams token/thinking/progress/response/done/error events from the server.
  */
 export const chatThreadSSE = async (
   threadId: string,
@@ -84,17 +84,20 @@ export const chatThreadSSE = async (
     buffer = parts.pop() || '';
 
     for (const part of parts) {
-      const dataLine = part.split('\n').find((line) => line.startsWith('data:'));
-      if (dataLine) {
-        const data = dataLine.slice(5).trim();
-        if (data) {
-          try {
-            const event = JSON.parse(data) as ChatProgressEvent;
-            onEvent(event);
-          } catch {
-            // Ignore parse errors
-          }
-        }
+      const data = part
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trim())
+        .join('\n')
+        .trim();
+
+      if (!data) continue;
+
+      try {
+        const event = JSON.parse(data) as ChatProgressEvent;
+        onEvent(event);
+      } catch {
+        // Ignore parse errors
       }
     }
   }

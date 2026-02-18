@@ -92,7 +92,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
       const next: Record<string, SubAgentCardState> = {};
       for (const agent of subAgents) {
         next[agent.id] = prev[agent.id] || {
-          expanded: false,
+          expanded: true,
           messages: [],
           loading: false,
           loaded: false,

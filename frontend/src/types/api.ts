@@ -112,6 +112,6 @@ export interface WsServerMessage {
 
 // SSE 进度事件
 export interface ChatProgressEvent {
-  type: 'progress' | 'response' | 'done' | 'error';
-  content: string;
+  type: 'token' | 'thinking' | 'progress' | 'response' | 'done' | 'error';
+  content?: string;
 }

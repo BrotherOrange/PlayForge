@@ -48,8 +48,10 @@ const ChatPage = () => {
   const [allAgents, setAllAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [progressSteps, setProgressSteps] = useState<string[]>([]);
+  const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
+  const [streamProgress, setStreamProgress] = useState<string[]>([]);
+  const [streamingThinking, setStreamingThinking] = useState('');
+  const [streamingAssistantContent, setStreamingAssistantContent] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -58,8 +60,13 @@ const ChatPage = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const activeThreadIdRef = useRef<string | null>(null);
+  const streamingAssistantContentRef = useRef('');
 
   const activeThreadId = selectedAgent?.threadId ?? null;
+  const isAnyMainStreamRunning = streamingThreadId !== null;
+  const isCurrentThreadStreaming =
+    !!activeThreadId && streamingThreadId === activeThreadId;
 
   // Derived: lead agents (no parentThreadId)
   const leadAgents = useMemo(
@@ -103,8 +110,19 @@ const ChatPage = () => {
   }, []);
 
   useEffect(() => {
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
+
+  useEffect(() => {
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [
+    messages,
+    streamProgress,
+    streamingThinking,
+    streamingAssistantContent,
+    isCurrentThreadStreaming,
+    scrollToBottom,
+  ]);
 
   // Load agents
   const loadAgents = useCallback(() => {
@@ -169,6 +187,16 @@ const ChatPage = () => {
     const timer = setInterval(loadAgents, 2000);
     return () => clearInterval(timer);
   }, [isSubAgent, teamPanelOpen, currentLeadAgent?.threadId, loadAgents]);
+
+  // While lead/sub-agent is streaming, refresh agent list so new sub-agents appear immediately.
+  useEffect(() => {
+    if (!streamingThreadId) {
+      return;
+    }
+    loadAgents();
+    const timer = window.setInterval(loadAgents, 1200);
+    return () => window.clearInterval(timer);
+  }, [streamingThreadId, loadAgents]);
 
   // Auto-open team panel when sub-agents appear
   useEffect(() => {
@@ -253,9 +281,27 @@ const ChatPage = () => {
     }
   };
 
+  const fetchMessagesWithRetry = useCallback(async (threadId: string, retries = 2) => {
+    let latestMessages: AgentMessage[] = [];
+    for (let i = 0; i <= retries; i += 1) {
+      const res = await getMessages(threadId, 50, 0);
+      latestMessages = res.data.data;
+      const hasAssistantReply =
+        latestMessages.length > 0 &&
+        latestMessages[latestMessages.length - 1].role === 'assistant';
+      if (hasAssistantReply || i === retries) {
+        break;
+      }
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 320 * (i + 1));
+      });
+    }
+    return latestMessages;
+  }, []);
+
   const handleSend = async () => {
     const content = inputValue.trim();
-    if (!content || !activeThreadId || isLoading) return;
+    if (!content || !activeThreadId || isAnyMainStreamRunning) return;
 
     // Optimistically add user message
     setMessages((prev) => [
@@ -270,35 +316,87 @@ const ChatPage = () => {
       },
     ]);
     setInputValue('');
-    setIsLoading(true);
-    setProgressSteps([]);
+    setStreamingThreadId(activeThreadId);
+    setStreamProgress([]);
+    setStreamingThinking('');
+    setStreamingAssistantContent('');
+    streamingAssistantContentRef.current = '';
 
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
     }
 
+    const sendingThreadId = activeThreadId;
     try {
-      await chatThreadSSE(activeThreadId, content, (event) => {
+      await chatThreadSSE(sendingThreadId, content, (event) => {
+        const payload = event.content ?? '';
         switch (event.type) {
           case 'progress':
-            setProgressSteps((prev) => [...prev, event.content]);
+            if (payload) {
+              setStreamProgress((prev) => [...prev, payload]);
+            }
+            break;
+          case 'thinking':
+            if (payload) {
+              setStreamingThinking((prev) => `${prev}${payload}`);
+            }
+            break;
+          case 'token':
+            if (payload) {
+              setStreamingAssistantContent((prev) => {
+                const next = `${prev}${payload}`;
+                streamingAssistantContentRef.current = next;
+                return next;
+              });
+            }
+            break;
+          case 'response':
+            if (payload) {
+              setStreamingAssistantContent(payload);
+              streamingAssistantContentRef.current = payload;
+            }
             break;
           case 'error':
             message.error(event.content || 'Failed to get response');
+            break;
+          default:
             break;
         }
       });
 
       // Refresh messages from DB to get accurate IDs and timestamps
-      const msgRes = await getMessages(activeThreadId, 50, 0);
-      setMessages(msgRes.data.data);
-      setProgressSteps([]);
+      const latestMessages = await fetchMessagesWithRetry(sendingThreadId, 2);
+      const hasAssistantReply =
+        latestMessages.length > 0 &&
+        latestMessages[latestMessages.length - 1].role === 'assistant';
+      const fallbackContent = streamingAssistantContentRef.current.trim();
+      const mergedMessages =
+        !hasAssistantReply && fallbackContent
+          ? [
+              ...latestMessages,
+              {
+                id: `tmp-assistant-final-${Date.now()}`,
+                role: 'assistant' as const,
+                content: fallbackContent,
+                toolName: null,
+                tokenCount: 0,
+                createdAt: new Date().toISOString(),
+              },
+            ]
+          : latestMessages;
+
+      if (activeThreadIdRef.current === sendingThreadId) {
+        setMessages(mergedMessages);
+      }
       loadAgents();
     } catch {
       message.error('Failed to get response, please try again');
     } finally {
-      setIsLoading(false);
-      setProgressSteps([]);
+      setStreamingThreadId(null);
+      setStreamProgress([]);
+      setStreamingThinking('');
+      setStreamingAssistantContent('');
+      streamingAssistantContentRef.current = '';
     }
   };
 
@@ -497,7 +595,7 @@ const ChatPage = () => {
             </div>
           )}
 
-          {selectedAgent && messages.length === 0 && !isLoading && (
+          {selectedAgent && messages.length === 0 && !isCurrentThreadStreaming && (
             <div className="sf-chat-welcome">
               <RobotOutlined
                 style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }}
@@ -518,26 +616,26 @@ const ChatPage = () => {
             </div>
           ))}
 
-          {isLoading && (
+          {isCurrentThreadStreaming && (
             <div className="sf-chat-bubble assistant">
               <div className="sf-chat-bubble-role">
                 {selectedAgent?.displayName || 'AI'}
               </div>
               <div className="sf-chat-bubble-content sf-chat-progress-bubble">
-                {progressSteps.length === 0 ? (
+                {streamProgress.length === 0 ? (
                   <div className="sf-chat-typing">
                     <LoadingOutlined style={{ marginRight: 8 }} />
-                    Thinking...
+                    Running...
                   </div>
                 ) : (
                   <div className="sf-chat-progress-list">
-                    {progressSteps.map((step, i) => (
+                    {streamProgress.map((step, i) => (
                       <div
                         key={i}
-                        className={`sf-chat-progress-step ${i === progressSteps.length - 1 ? 'active' : 'done'}`}
+                        className={`sf-chat-progress-step ${i === streamProgress.length - 1 ? 'active' : 'done'}`}
                       >
                         <span className="sf-chat-progress-icon">
-                          {i === progressSteps.length - 1 ? (
+                          {i === streamProgress.length - 1 ? (
                             <LoadingOutlined />
                           ) : (
                             <span className="sf-chat-progress-check">&#10003;</span>
@@ -548,6 +646,33 @@ const ChatPage = () => {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {isCurrentThreadStreaming && streamingThinking.trim().length > 0 && (
+            <div className="sf-chat-bubble assistant thinking">
+              <div className="sf-chat-bubble-role">
+                {selectedAgent?.displayName || 'AI'} Thinking
+              </div>
+              <div className="sf-chat-bubble-content sf-chat-thinking-content sf-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {streamingThinking}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
+
+          {isCurrentThreadStreaming && streamingAssistantContent.length > 0 && (
+            <div className="sf-chat-bubble assistant">
+              <div className="sf-chat-bubble-role">
+                {selectedAgent?.displayName || 'AI'}
+              </div>
+              <div className="sf-chat-bubble-content sf-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {streamingAssistantContent}
+                </ReactMarkdown>
+                <span className="sf-chat-cursor" />
               </div>
             </div>
           )}
@@ -573,14 +698,13 @@ const ChatPage = () => {
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   rows={1}
-                  disabled={isLoading}
                 />
                 <button
                   className="sf-chat-send-btn"
                   onClick={handleSend}
-                  disabled={!inputValue.trim() || isLoading}
+                  disabled={!inputValue.trim() || isAnyMainStreamRunning}
                 >
-                  {isLoading ? <LoadingOutlined /> : <SendOutlined />}
+                  {isAnyMainStreamRunning ? <LoadingOutlined /> : <SendOutlined />}
                 </button>
               </div>
             )}
