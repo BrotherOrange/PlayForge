@@ -67,7 +67,7 @@ public class GeminiModelConfig {
             throw new IllegalStateException("Gemini API key is required: " + prefix + "api-key");
         }
 
-        String modelName = environment.getProperty(prefix + "model-name", "gemini-3-pro-preview");
+        String modelName = environment.getProperty(prefix + "model-name", "gemini-3-flash-preview");
         Integer maxOutputTokens = environment.getProperty(
                 prefix + "max-output-tokens", Integer.class, AgentConstants.DEFAULT_MAX_OUTPUT_TOKENS);
 

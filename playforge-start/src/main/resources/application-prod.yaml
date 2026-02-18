@@ -59,9 +59,11 @@ langchain4j:
   google-ai-gemini:
     chat-model:
       api-key: ${GEMINI_API_KEY:}
-      model-name: gemini-3-pro-preview
+      model-name: gemini-3-flash-preview
       max-output-tokens: 32768
+      timeout: 120s
     streaming-chat-model:
       api-key: ${GEMINI_API_KEY:}
-      model-name: gemini-3-pro-preview
+      model-name: gemini-3-flash-preview
       max-output-tokens: 32768
+      timeout: 120s
