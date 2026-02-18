@@ -1,5 +1,6 @@
 package com.game.playforge.application.service.agent.tools;
 
+import com.game.playforge.application.dto.AgentStreamEvent;
 import com.game.playforge.application.service.agent.SubAgentService;
 import com.game.playforge.application.service.agent.SubAgentService.SubAgentInfo;
 import com.game.playforge.infrastructure.external.ai.AsyncTaskManager;
@@ -11,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * 子Agent管理工具
@@ -29,13 +31,22 @@ public class SubAgentTool {
     private final Long parentThreadId;
     private final SubAgentService subAgentService;
     private final AsyncTaskManager taskManager;
+    private final Consumer<AgentStreamEvent> progressCallback;
 
     public SubAgentTool(Long userId, Long parentThreadId,
-                        SubAgentService subAgentService, AsyncTaskManager taskManager) {
+                        SubAgentService subAgentService, AsyncTaskManager taskManager,
+                        Consumer<AgentStreamEvent> progressCallback) {
         this.userId = userId;
         this.parentThreadId = parentThreadId;
         this.subAgentService = subAgentService;
         this.taskManager = taskManager;
+        this.progressCallback = progressCallback;
+    }
+
+    private void emitProgress(String content) {
+        if (progressCallback != null) {
+            progressCallback.accept(AgentStreamEvent.progress(content));
+        }
     }
 
     @Tool("Create a specialized sub-agent. Returns agent info including threadId for task dispatch. " +
@@ -51,6 +62,8 @@ public class SubAgentTool {
                     userId, parentThreadId, type, task,
                     normalizeEmpty(additionalPrompt),
                     normalizeEmpty(additionalTools));
+
+            emitProgress(String.format("创建子Agent: %s (%s)", info.displayName(), info.type()));
 
             return String.format("""
                     Sub-agent created successfully:
@@ -79,6 +92,9 @@ public class SubAgentTool {
             taskManager.dispatch(threadId, agent.agentName(),
                     () -> subAgentService.chat(userId, parentThreadId, threadIdLong, message));
 
+            emitProgress(String.format("分发任务给 %s，当前 %d 个Agent在后台工作",
+                    agent.agentName(), taskManager.pendingCount()));
+
             return String.format("Task dispatched to %s (threadId: %s). %d agent(s) now working in background.",
                     agent.agentName(), threadId, taskManager.pendingCount());
         } catch (Exception e) {
@@ -92,6 +108,8 @@ public class SubAgentTool {
     public String awaitResults(
             @P("Maximum wait time in seconds (recommended: 30-120)") int timeoutSeconds) {
         try {
+            emitProgress(String.format("等待子Agent结果（超时 %d 秒）...", timeoutSeconds));
+
             List<TaskResult> results = taskManager.awaitResults(timeoutSeconds);
 
             if (results.isEmpty()) {
@@ -101,6 +119,12 @@ public class SubAgentTool {
                 }
                 return String.format("Timeout after %d seconds. %d agent(s) still working.", timeoutSeconds, pending);
             }
+
+            String agentSummary = results.stream()
+                    .map(r -> r.agentName() + (r.isError() ? "(失败)" : ""))
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("");
+            emitProgress(String.format("收到 %d 个子Agent的结果: %s", results.size(), agentSummary));
 
             StringBuilder sb = new StringBuilder();
             for (TaskResult result : results) {
@@ -129,9 +153,10 @@ public class SubAgentTool {
             @P("Thread ID of the sub-agent to destroy") String threadId) {
         try {
             Long threadIdLong = Long.parseLong(threadId);
-            resolveTeamAgent(threadIdLong);
+            SubAgentInfo agent = resolveTeamAgent(threadIdLong);
             taskManager.cancel(threadId);
             subAgentService.destroySubAgent(userId, parentThreadId, threadIdLong);
+            emitProgress(String.format("销毁子Agent: %s", agent.agentName()));
             return String.format("Sub-agent (threadId: %s) destroyed successfully.", threadId);
         } catch (Exception e) {
             log.error("销毁子Agent失败, threadId={}", threadId, e);

@@ -109,3 +109,9 @@ export interface WsServerMessage {
   type: 'token' | 'thinking' | 'done' | 'error';
   content?: string;
 }
+
+// SSE 进度事件
+export interface ChatProgressEvent {
+  type: 'progress' | 'response' | 'done' | 'error';
+  content: string;
+}

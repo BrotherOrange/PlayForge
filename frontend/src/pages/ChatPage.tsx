@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { listAgents, createAgentWithThread, deleteAgent, getMessages, chatThread } from '../api/chat';
+import { listAgents, createAgentWithThread, deleteAgent, getMessages, chatThreadSSE } from '../api/chat';
 import TeamPanel from '../components/TeamPanel';
 import { getAgentLabel, getAgentColor, getAgentTypeFromName } from '../constants/agentTypes';
 import { AgentDefinition, AgentMessage, UserProfile } from '../types/api';
@@ -49,6 +49,7 @@ const ChatPage = () => {
   const [selectedAgent, setSelectedAgent] = useState<AgentDefinition | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -270,37 +271,34 @@ const ChatPage = () => {
     ]);
     setInputValue('');
     setIsLoading(true);
+    setProgressSteps([]);
 
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
     }
 
     try {
-      const res = await chatThread(activeThreadId, content);
-      const assistantContent = res.data.data.content;
+      await chatThreadSSE(activeThreadId, content, (event) => {
+        switch (event.type) {
+          case 'progress':
+            setProgressSteps((prev) => [...prev, event.content]);
+            break;
+          case 'error':
+            message.error(event.content || 'Failed to get response');
+            break;
+        }
+      });
+
       // Refresh messages from DB to get accurate IDs and timestamps
       const msgRes = await getMessages(activeThreadId, 50, 0);
       setMessages(msgRes.data.data);
-      // If DB hasn't persisted yet, fallback to local append
-      const lastMsg = msgRes.data.data[msgRes.data.data.length - 1];
-      if (!lastMsg || lastMsg.role !== 'assistant') {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: String(Date.now()),
-            role: 'assistant',
-            content: assistantContent,
-            toolName: null,
-            tokenCount: 0,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-      }
+      setProgressSteps([]);
       loadAgents();
     } catch {
       message.error('Failed to get response, please try again');
     } finally {
       setIsLoading(false);
+      setProgressSteps([]);
     }
   };
 
@@ -525,9 +523,31 @@ const ChatPage = () => {
               <div className="sf-chat-bubble-role">
                 {selectedAgent?.displayName || 'AI'}
               </div>
-              <div className="sf-chat-bubble-content sf-chat-typing">
-                <LoadingOutlined style={{ marginRight: 8 }} />
-                Generating response...
+              <div className="sf-chat-bubble-content sf-chat-progress-bubble">
+                {progressSteps.length === 0 ? (
+                  <div className="sf-chat-typing">
+                    <LoadingOutlined style={{ marginRight: 8 }} />
+                    Thinking...
+                  </div>
+                ) : (
+                  <div className="sf-chat-progress-list">
+                    {progressSteps.map((step, i) => (
+                      <div
+                        key={i}
+                        className={`sf-chat-progress-step ${i === progressSteps.length - 1 ? 'active' : 'done'}`}
+                      >
+                        <span className="sf-chat-progress-icon">
+                          {i === progressSteps.length - 1 ? (
+                            <LoadingOutlined />
+                          ) : (
+                            <span className="sf-chat-progress-check">&#10003;</span>
+                          )}
+                        </span>
+                        <span className="sf-chat-progress-text">{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

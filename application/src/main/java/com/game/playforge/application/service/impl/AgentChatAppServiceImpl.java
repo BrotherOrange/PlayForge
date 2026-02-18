@@ -33,6 +33,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
+import reactor.core.publisher.Sinks;
+
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.time.LocalDateTime;
@@ -43,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 
 /**
  * Agent聊天应用服务实现
@@ -137,10 +140,51 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         });
     }
 
+    @Override
+    public Flux<AgentStreamEvent> chatWithProgress(Long userId, Long threadId, String message) {
+        log.info("带进度聊天, userId={}, threadId={}", userId, threadId);
+
+        AgentThread thread = validateAndGetThread(userId, threadId);
+        AgentDefinition definition = getAgentDefinition(thread.getAgentId());
+        recoverMemoryIfNeeded(thread, definition);
+
+        Sinks.Many<AgentStreamEvent> sink = Sinks.many().unicast().onBackpressureBuffer();
+        Consumer<AgentStreamEvent> progressCallback = event -> sink.tryEmitNext(event);
+
+        List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
+        AgentChatService agent = agentFactory.createAgent(definition, threadId, userId, extraTools);
+
+        Thread.startVirtualThread(() -> {
+            try {
+                String response = chatWithRetry(agent, message, threadId);
+
+                transactionTemplate.executeWithoutResult(status -> {
+                    saveMessages(threadId, message, response);
+                    updateThreadStats(threadId, 2);
+                });
+
+                sink.tryEmitNext(AgentStreamEvent.response(response));
+                sink.tryEmitNext(AgentStreamEvent.done());
+                sink.tryEmitComplete();
+            } catch (Exception e) {
+                log.error("带进度聊天失败, threadId={}", threadId, e);
+                sink.tryEmitNext(AgentStreamEvent.error(e.getMessage()));
+                sink.tryEmitComplete();
+            }
+        });
+
+        return sink.asFlux();
+    }
+
     /**
      * 构建额外工具列表（如SubAgentTool）
      */
     private List<Object> buildExtraTools(AgentDefinition definition, Long userId, Long threadId) {
+        return buildExtraTools(definition, userId, threadId, null);
+    }
+
+    private List<Object> buildExtraTools(AgentDefinition definition, Long userId, Long threadId,
+                                         Consumer<AgentStreamEvent> progressCallback) {
         if (!hasSubAgentTool(definition)) {
             AsyncTaskManager removed = taskManagers.remove(threadId);
             if (removed != null) {
@@ -150,7 +194,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         }
 
         AsyncTaskManager taskManager = taskManagers.computeIfAbsent(threadId, ignored -> new AsyncTaskManager());
-        SubAgentTool subAgentTool = new SubAgentTool(userId, threadId, subAgentService, taskManager);
+        SubAgentTool subAgentTool = new SubAgentTool(userId, threadId, subAgentService, taskManager, progressCallback);
 
         log.info("已注入SubAgentTool, userId={}, threadId={}", userId, threadId);
         return List.of(subAgentTool);

@@ -8,6 +8,7 @@ import com.game.playforge.api.dto.response.ChatResponse;
 import com.game.playforge.api.mapper.AgentMessageMapper;
 import com.game.playforge.api.mapper.AgentThreadMapper;
 import com.game.playforge.application.dto.AgentChatResponse;
+import com.game.playforge.application.dto.AgentStreamEvent;
 import com.game.playforge.application.service.AgentChatAppService;
 import com.game.playforge.application.service.AgentThreadService;
 import com.game.playforge.common.constant.AuthConstants;
@@ -22,6 +23,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
 
 import java.util.List;
 
@@ -150,5 +154,55 @@ public class AgentThreadController {
         log.info("同步聊天, userId={}, threadId={}", userId, id);
         AgentChatResponse response = agentChatAppService.chat(userId, id, chatRequest.getMessage());
         return ApiResult.success(new ChatResponse(response.threadId(), response.content()));
+    }
+
+    /**
+     * 带进度的聊天（SSE）
+     * <p>
+     * 返回Server-Sent Events流，包含子Agent操作进度和最终响应。
+     * 事件类型：progress（操作进度）、response（最终回答）、done（完成）、error（错误）
+     * </p>
+     *
+     * @param request     HTTP请求
+     * @param id          会话ID
+     * @param chatRequest 聊天请求
+     * @return SSE事件流
+     */
+    @PostMapping("/{id}/chat-progress")
+    public SseEmitter chatWithProgress(
+            HttpServletRequest request,
+            @PathVariable Long id,
+            @Valid @RequestBody ChatRequest chatRequest) {
+        Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
+        log.info("带进度聊天(SSE), userId={}, threadId={}", userId, id);
+
+        SseEmitter emitter = new SseEmitter(300_000L);
+
+        agentChatAppService.chatWithProgress(userId, id, chatRequest.getMessage())
+                .subscribe(
+                        event -> {
+                            try {
+                                emitter.send(SseEmitter.event()
+                                        .name(event.type())
+                                        .data(event));
+                            } catch (IOException e) {
+                                log.warn("SSE发送失败, threadId={}", id, e);
+                                emitter.completeWithError(e);
+                            }
+                        },
+                        error -> {
+                            log.error("SSE流错误, threadId={}", id, error);
+                            try {
+                                emitter.send(SseEmitter.event()
+                                        .name("error")
+                                        .data(new AgentStreamEvent("error", error.getMessage())));
+                            } catch (IOException ignored) {
+                            }
+                            emitter.complete();
+                        },
+                        emitter::complete
+                );
+
+        return emitter;
     }
 }

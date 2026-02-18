@@ -1,4 +1,5 @@
 import client from './client';
+import { getAccessToken } from '../utils/token';
 import {
   ApiResponse,
   AgentDefinition,
@@ -7,6 +8,7 @@ import {
   CreateThreadRequest,
   CreateAgentWithThreadRequest,
   CreateAgentWithThreadResponse,
+  ChatProgressEvent,
 } from '../types/api';
 
 export const listAgents = () =>
@@ -41,3 +43,59 @@ export const chatThread = (threadId: string, message: string) =>
     { message },
     { timeout: 300_000 }
   );
+
+/**
+ * SSE-based chat with progress events.
+ * Streams progress/response/done/error events from the server.
+ */
+export const chatThreadSSE = async (
+  threadId: string,
+  message: string,
+  onEvent: (event: ChatProgressEvent) => void,
+  signal?: AbortSignal
+): Promise<void> => {
+  const token = getAccessToken();
+  const response = await fetch(`/api/agent-threads/${threadId}/chat-progress`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE events are separated by double newlines
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop() || '';
+
+    for (const part of parts) {
+      const dataLine = part.split('\n').find((line) => line.startsWith('data:'));
+      if (dataLine) {
+        const data = dataLine.slice(5).trim();
+        if (data) {
+          try {
+            const event = JSON.parse(data) as ChatProgressEvent;
+            onEvent(event);
+          } catch {
+            // Ignore parse errors
+          }
+        }
+      }
+    }
+  }
+};
