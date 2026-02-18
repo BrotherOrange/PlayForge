@@ -179,50 +179,45 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                         }
                     };
 
-                    // Accumulate thinking from all LLM rounds for persistence
-                    StringBuilder accumulatedThinking = new StringBuilder();
-
-                    // Intercept each LLM round's complete response and push to SSE immediately.
-                    // This gives per-round granularity without token-by-token streaming.
+                    // Intercept each LLM round's complete response: persist to DB AND push to SSE.
+                    // This ensures intermediate responses survive page refresh.
                     Consumer<ChatResponse> responseInterceptor = chatResponse -> {
-                        if (chatResponse.aiMessage() == null || sink.isCancelled()) {
+                        if (chatResponse.aiMessage() == null) {
                             return;
                         }
                         String thinking = chatResponse.aiMessage().thinking();
                         if (thinking != null && !thinking.isBlank()) {
-                            accumulatedThinking.append(thinking).append("\n");
-                            sink.next(AgentStreamEvent.thinking(thinking));
+                            transactionTemplate.executeWithoutResult(status -> {
+                                saveToolMessage(threadId, AgentStreamEvent.TYPE_THINKING, thinking);
+                                updateThreadStats(threadId, 1);
+                            });
+                            if (!sink.isCancelled()) {
+                                sink.next(AgentStreamEvent.thinking(thinking));
+                            }
                         }
                         String text = chatResponse.aiMessage().text();
                         if (text != null && !text.isBlank()) {
-                            sink.next(AgentStreamEvent.response(text));
+                            transactionTemplate.executeWithoutResult(status -> {
+                                saveAssistantMessage(threadId, text);
+                                updateThreadStats(threadId, 1);
+                            });
+                            if (!sink.isCancelled()) {
+                                sink.next(AgentStreamEvent.response(text));
+                            }
                         }
                     };
 
                     List<Object> extraTools = buildExtraTools(definition, userId, threadId, progressCallback);
                     AgentChatService agent = agentFactory.createAgent(
                             definition, threadId, userId, extraTools, responseInterceptor);
-                    String response = chatWithRetry(agent, message, threadId);
+                    chatWithRetry(agent, message, threadId);
 
-                    // Persist thinking + final assistant message
-                    String thinkingToSave = accumulatedThinking.toString().trim();
-                    transactionTemplate.executeWithoutResult(status -> {
-                        int delta = 0;
-                        if (!thinkingToSave.isBlank()) {
-                            saveToolMessage(threadId, AgentStreamEvent.TYPE_THINKING, thinkingToSave);
-                            delta++;
-                        }
-                        saveAssistantMessage(threadId, response);
-                        delta++;
-                        updateThreadStats(threadId, delta);
-                    });
-
-                    // Responses already emitted by responseInterceptor; just signal completion
+                    // All responses already persisted by responseInterceptor; just signal completion
                     if (!sink.isCancelled()) {
                         sink.complete();
                     }
 
-                    log.info("带进度聊天完成, threadId={}, responseLength={}", threadId, response.length());
+                    log.info("带进度聊天完成, threadId={}", threadId);
                 } catch (Exception e) {
                     log.error("带进度聊天失败, threadId={}", threadId, e);
                     if (!sink.isCancelled()) {
