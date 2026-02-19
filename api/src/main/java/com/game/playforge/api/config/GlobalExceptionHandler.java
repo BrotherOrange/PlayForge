@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -83,6 +84,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ClientAbortException.class)
     public void handleClientAbort(ClientAbortException e) {
         log.debug("客户端断开连接: {}", e.getMessage());
+    }
+
+    /**
+     * 处理异步请求断连异常（Spring 6+）
+     * <p>
+     * 客户端在异步响应写入过程中断开连接，无需返回响应体。
+     * </p>
+     *
+     * @param e 异步请求不可用异常
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException e) {
+        log.debug("异步请求客户端断开连接: {}", e.getMessage());
     }
 
     /**
