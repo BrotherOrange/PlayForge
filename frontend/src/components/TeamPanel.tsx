@@ -65,6 +65,8 @@ interface SubAgentCardState {
   sending: boolean;
 }
 
+const MESSAGE_FETCH_LIMIT = 200;
+
 const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
   const [cardStates, setCardStates] = useState<Record<string, SubAgentCardState>>({});
   const cardStatesRef = useRef(cardStates);
@@ -116,7 +118,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
       };
     });
 
-    getMessages(threadId, 50, 0)
+    getMessages(threadId, MESSAGE_FETCH_LIMIT, 0)
       .then((res) => {
         setCardStates((p) => {
           const current = p[agentId];

@@ -42,6 +42,20 @@ const AVAILABLE_MODELS = [
   { provider: 'gemini', modelName: 'gemini-3-flash-preview', displayName: 'Gemini 3 Flash' },
 ];
 
+const MESSAGE_FETCH_LIMIT = 200;
+
+const hasAssistantReplyAfterLastUser = (history: AgentMessage[]): boolean => {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const msg = history[i];
+    if (msg.role === 'assistant') return true;
+    if (msg.role === 'user') return false;
+  }
+  return false;
+};
+
+const buildMessageFingerprint = (history: AgentMessage[]): string =>
+  history.map((msg) => `${msg.id}:${msg.content.length}`).join('|');
+
 const ChatPage = () => {
   const { user } = useOutletContext<{ user: UserProfile | null }>();
   const isAdmin = user?.isAdmin === true;
@@ -252,22 +266,27 @@ const ChatPage = () => {
     }
 
     const controller = new AbortController();
-    getMessages(activeThreadId, 50, 0, controller.signal)
-      .then((res) => setMessages(res.data.data))
+    let lastFingerprint = '';
+    getMessages(activeThreadId, MESSAGE_FETCH_LIMIT, 0, controller.signal)
+      .then((res) => {
+        const data = res.data.data;
+        setMessages(data);
+        lastFingerprint = buildMessageFingerprint(data);
+      })
       .catch((error) => {
         if ((error as { code?: string }).code === 'ERR_CANCELED') return;
         setMessages([]);
       });
 
-    let lastCount = -1;
     let stablePolls = 0;
     let backendConfirmedIdle = false;
     const pollTimer = window.setInterval(async () => {
       if (streamingThreadIdRef.current === activeThreadId) return; // SSE already handling updates
       try {
-        const res = await getMessages(activeThreadId, 50, 0);
+        const res = await getMessages(activeThreadId, MESSAGE_FETCH_LIMIT, 0);
         const data = res.data.data;
-        if (data.length !== lastCount) {
+        const fingerprint = buildMessageFingerprint(data);
+        if (fingerprint !== lastFingerprint) {
           setMessages(data);
           stablePolls = 0;
           backendConfirmedIdle = false;
@@ -290,7 +309,7 @@ const ChatPage = () => {
             window.clearInterval(pollTimer);
           }
         }
-        lastCount = data.length;
+        lastFingerprint = fingerprint;
       } catch { /* ignore polling errors */ }
     }, 2000);
 
@@ -360,9 +379,9 @@ const ChatPage = () => {
   const fetchMessagesWithRetry = useCallback(async (threadId: string, retries = 2) => {
     let latestMessages: AgentMessage[] = [];
     for (let i = 0; i <= retries; i += 1) {
-      const res = await getMessages(threadId, 50, 0);
+      const res = await getMessages(threadId, MESSAGE_FETCH_LIMIT, 0);
       latestMessages = res.data.data;
-      const hasAssistantReply = latestMessages.some((msg) => msg.role === 'assistant');
+      const hasAssistantReply = hasAssistantReplyAfterLastUser(latestMessages);
       if (hasAssistantReply || i === retries) {
         break;
       }
@@ -502,7 +521,7 @@ const ChatPage = () => {
         .reverse()
         .find((m) => m.role === 'assistant');
       const fallbackContent = latestLiveAssistant?.content.trim() || '';
-      const hasAssistantReplyInDb = latestMessages.some((msg) => msg.role === 'assistant');
+      const hasAssistantReplyInDb = hasAssistantReplyAfterLastUser(latestMessages);
       const mergedMessages =
         !hasAssistantReplyInDb && fallbackContent
           ? [

@@ -57,6 +57,25 @@ export const chatThreadSSE = async (
   onEvent: (event: ChatProgressEvent) => void,
   signal?: AbortSignal
 ): Promise<void> => {
+  const emitEvent = (rawChunk: string) => {
+    const data = rawChunk
+      .split(/\r?\n/)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+      .trim();
+
+    if (!data) return;
+
+    try {
+      const event = JSON.parse(data) as ChatProgressEvent;
+      onEvent(event);
+    } catch {
+      // Ignore malformed SSE payload fragments
+    }
+  };
+
   const token = getAccessToken();
   const response = await fetch(`/api/agent-threads/${threadId}/chat-progress`, {
     method: 'POST',
@@ -72,36 +91,33 @@ export const chatThreadSSE = async (
     throw new Error(`HTTP ${response.status}`);
   }
 
-  const reader = response.body!.getReader();
+  if (!response.body) {
+    throw new Error('Empty SSE response body');
+  }
+
+  const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      break;
+    }
 
     buffer += decoder.decode(value, { stream: true });
 
-    // SSE events are separated by double newlines
-    const parts = buffer.split('\n\n');
+    // SSE events are separated by blank lines; support both LF and CRLF.
+    const parts = buffer.split(/\r?\n\r?\n/);
     buffer = parts.pop() || '';
 
     for (const part of parts) {
-      const data = part
-        .split('\n')
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trim())
-        .join('\n')
-        .trim();
-
-      if (!data) continue;
-
-      try {
-        const event = JSON.parse(data) as ChatProgressEvent;
-        onEvent(event);
-      } catch {
-        // Ignore parse errors
-      }
+      emitEvent(part);
     }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    emitEvent(buffer);
   }
 };
