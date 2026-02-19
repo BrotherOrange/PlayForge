@@ -34,7 +34,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 const AVAILABLE_MODELS = [
   { provider: 'openai', modelName: 'gpt-5.2', displayName: 'GPT-5.2' },
-  { provider: 'anthropic', modelName: 'claude-opus-4-6', displayName: 'Claude Opus 4.6' },
+  { provider: 'anthropic', modelName: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6' },
   { provider: 'gemini', modelName: 'gemini-3-flash-preview', displayName: 'Gemini 3 Flash' },
 ];
 

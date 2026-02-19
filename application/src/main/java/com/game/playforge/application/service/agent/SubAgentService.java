@@ -47,6 +47,11 @@ public class SubAgentService {
     private final RedisChatMemoryStore redisChatMemoryStore;
     private final TransactionTemplate transactionTemplate;
 
+    /**
+     * 子Agent使用更快的模型（Sonnet 4.6比Opus快且省token，接近Opus水平）
+     */
+    private static final String ANTHROPIC_SUB_AGENT_MODEL = "claude-sonnet-4-6";
+
     public record SubAgentInfo(String agentName, Long threadId, String type, String displayName) {}
     private record SubAgentContext(AgentThread thread, AgentDefinition definition) {}
 
@@ -108,7 +113,12 @@ public class SubAgentService {
             agent.setDisplayName(typeDescriptor.description());
             agent.setDescription("Sub-agent for task: " + (task != null ? task : ""));
             agent.setProvider(parentAgent.getProvider());
-            agent.setModelName(parentAgent.getModelName());
+            // Anthropic子Agent使用Sonnet（更快、更省token），其他provider继承父Agent模型
+            if ("anthropic".equalsIgnoreCase(parentAgent.getProvider())) {
+                agent.setModelName(ANTHROPIC_SUB_AGENT_MODEL);
+            } else {
+                agent.setModelName(parentAgent.getModelName());
+            }
             agent.setSystemPrompt(systemPrompt.isEmpty() ? null : systemPrompt);
             agent.setToolNames(mergedTools.isEmpty() ? null : mergedTools);
             agent.setParentThreadId(parentThreadId);

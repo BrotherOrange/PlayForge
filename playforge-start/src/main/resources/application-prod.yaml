@@ -46,7 +46,7 @@ langchain4j:
   anthropic:
     chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
-      model-name: claude-opus-4-6
+      model-name: claude-sonnet-4-6
       max-tokens: 32768
       timeout: 300s
       max-retries: 0
@@ -54,7 +54,7 @@ langchain4j:
       log-responses: true
     streaming-chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
-      model-name: claude-opus-4-6
+      model-name: claude-sonnet-4-6
       max-tokens: 32768
       timeout: 300s
       max-retries: 0
