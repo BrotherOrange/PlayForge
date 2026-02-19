@@ -111,12 +111,12 @@ export function useAgentWebSocket({
         if (!shouldReconnectRef.current || event.code === 1000) {
           return;
         }
-        if (reconnectAttemptsRef.current >= 5) {
+        if (reconnectAttemptsRef.current >= 10) {
           callbacksRef.current.onError('WebSocket disconnected, please refresh and try again');
           return;
         }
         reconnectAttemptsRef.current += 1;
-        const delay = Math.min(1000 * 2 ** (reconnectAttemptsRef.current - 1), 5000);
+        const delay = Math.min(1000 * 2 ** (reconnectAttemptsRef.current - 1), 10000);
         reconnectTimerRef.current = window.setTimeout(connect, delay);
       };
     };

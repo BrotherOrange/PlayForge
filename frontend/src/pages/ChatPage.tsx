@@ -236,13 +236,13 @@ const ChatPage = () => {
           stablePolls = 0;
         } else {
           stablePolls++;
-          if (stablePolls >= 10) {
+          if (stablePolls >= 60) {
             window.clearInterval(pollTimer);
           }
         }
         lastCount = data.length;
       } catch { /* ignore polling errors */ }
-    }, 3000);
+    }, 2000);
 
     return () => {
       controller.abort();

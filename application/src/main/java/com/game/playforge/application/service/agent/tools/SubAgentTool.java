@@ -110,7 +110,7 @@ public class SubAgentTool {
     public String awaitResults(
             @P("Maximum wait time in seconds (recommended: 30-120)") int timeoutSeconds) {
         try {
-            emitProgress(String.format("等待子Agent结果（超时 %d 秒）...", timeoutSeconds));
+            emitProgress("等待子Agent结果...");
 
             List<TaskResult> results = taskManager.awaitResults(timeoutSeconds);
 

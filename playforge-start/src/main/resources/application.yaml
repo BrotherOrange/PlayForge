@@ -78,7 +78,7 @@ langchain4j:
       api-key: ${ANTHROPIC_API_KEY:}
       model-name: claude-sonnet-4-6
       max-tokens: 32768
-      timeout: 300s
+      timeout: 600s
       max-retries: 0
       log-requests: true
       log-responses: true
@@ -86,7 +86,7 @@ langchain4j:
       api-key: ${ANTHROPIC_API_KEY:}
       model-name: claude-sonnet-4-6
       max-tokens: 32768
-      timeout: 300s
+      timeout: 600s
       max-retries: 0
   google-ai-gemini:
     chat-model:

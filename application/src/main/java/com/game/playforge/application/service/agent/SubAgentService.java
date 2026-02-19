@@ -303,7 +303,7 @@ public class SubAgentService {
         }
         String simpleName = root.getClass().getSimpleName();
         if ("ReadTimeoutException".equals(simpleName) || "ConnectTimeoutException".equals(simpleName)) {
-            return "Upstream model timeout. Please retry.";
+            return "Model is still processing. Please retry.";
         }
         return msg != null ? msg : simpleName;
     }
