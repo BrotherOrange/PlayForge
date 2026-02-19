@@ -57,6 +57,7 @@ const ChatPage = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeThreadIdRef = useRef<string | null>(null);
+  const streamingThreadIdRef = useRef<string | null>(null);
   const streamingBubblesRef = useRef<AgentMessage[]>([]);
 
   const activeThreadId = selectedAgent?.threadId ?? null;
@@ -117,6 +118,10 @@ const ChatPage = () => {
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);
+
+  useEffect(() => {
+    streamingThreadIdRef.current = streamingThreadId;
+  }, [streamingThreadId]);
 
   useEffect(() => {
     streamingBubblesRef.current = streamingBubbles;
@@ -222,7 +227,7 @@ const ChatPage = () => {
     let lastCount = -1;
     let stablePolls = 0;
     const pollTimer = window.setInterval(async () => {
-      if (isCurrentThreadStreaming) return; // SSE already handling updates
+      if (streamingThreadIdRef.current === activeThreadId) return; // SSE already handling updates
       try {
         const res = await getMessages(activeThreadId, 50, 0);
         const data = res.data.data;
@@ -418,27 +423,17 @@ const ChatPage = () => {
             break;
           case 'response':
             if (payload) {
-              setStreamingBubbles((prev) => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant') {
-                  const normalized =
-                    payload.startsWith(last.content) ? payload : `${last.content}${payload}`;
-                  const next = [...prev];
-                  next[next.length - 1] = { ...last, content: normalized };
-                  return next;
-                }
-                return [
-                  ...prev,
-                  {
-                    id: `tmp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    role: 'assistant',
-                    content: payload,
-                    toolName: null,
-                    tokenCount: 0,
-                    createdAt: new Date().toISOString(),
-                  },
-                ];
-              });
+              setStreamingBubbles((prev) => [
+                ...prev,
+                {
+                  id: `tmp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  role: 'assistant',
+                  content: payload,
+                  toolName: null,
+                  tokenCount: 0,
+                  createdAt: new Date().toISOString(),
+                },
+              ]);
             }
             break;
           case 'error':
