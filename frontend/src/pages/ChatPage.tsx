@@ -170,7 +170,7 @@ const ChatPage = () => {
   const loadAgents = useCallback(() => {
     listAgents()
       .then((res) => setAllAgents(res.data.data))
-      .catch(() => message.error('Failed to load conversations'));
+      .catch(() => { /* silent — polling retries automatically */ });
   }, []);
 
   // Initial load
