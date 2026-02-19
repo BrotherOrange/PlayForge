@@ -78,7 +78,7 @@ langchain4j:
       api-key: ${ANTHROPIC_API_KEY:}
       model-name: claude-opus-4-6
       max-tokens: 32768
-      timeout: 120s
+      timeout: 300s
       max-retries: 0
       log-requests: true
       log-responses: true
@@ -86,16 +86,16 @@ langchain4j:
       api-key: ${ANTHROPIC_API_KEY:}
       model-name: claude-opus-4-6
       max-tokens: 32768
-      timeout: 120s
+      timeout: 300s
       max-retries: 0
   google-ai-gemini:
     chat-model:
       api-key: ${GEMINI_API_KEY:}
       model-name: gemini-3-flash-preview
       max-output-tokens: 32768
-      timeout: 120s
+      timeout: 300s
     streaming-chat-model:
       api-key: ${GEMINI_API_KEY:}
       model-name: gemini-3-flash-preview
       max-output-tokens: 32768
-      timeout: 120s
+      timeout: 300s
