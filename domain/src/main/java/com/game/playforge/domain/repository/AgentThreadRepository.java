@@ -40,13 +40,13 @@ public interface AgentThreadRepository {
     List<AgentThread> findByUserIdAndAgentId(Long userId, Long agentId);
 
     /**
-     * 批量查询每个Agent的最新ACTIVE会话ID
+     * 批量查询每个Agent的最新非DELETED会话ID
      *
      * @param userId   用户ID
      * @param agentIds Agent定义ID列表
-     * @return key=agentId, value=latestActiveThreadId
+     * @return key=agentId, value=latestThreadId
      */
-    Map<Long, Long> findLatestActiveThreadIdsByAgentIds(Long userId, List<Long> agentIds);
+    Map<Long, Long> findLatestThreadIdsByAgentIds(Long userId, List<Long> agentIds);
 
     /**
      * 新增会话

@@ -1200,6 +1200,7 @@
   background: rgba(17,24,39,0.4);
   overflow: hidden;
   transition: border-color 0.2s;
+  flex-shrink: 0;
 }
 
 .sf-subagent-card:hover {

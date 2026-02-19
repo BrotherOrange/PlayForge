@@ -132,7 +132,18 @@ const ChatPage = () => {
 
   const handleCopy = useCallback(async (id: string, content: string) => {
     try {
-      await navigator.clipboard.writeText(content);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(content);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = content;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
@@ -187,15 +198,9 @@ const ChatPage = () => {
       return;
     }
 
-    const agentsWithThread = allAgents.filter((agent) => !!agent.threadId);
-    if (agentsWithThread.length === 0) {
-      setSelectedAgent(null);
-      return;
-    }
-
     if (!selectedAgent) return;
 
-    const updatedSelected = agentsWithThread.find((agent) => agent.id === selectedAgent.id);
+    const updatedSelected = allAgents.find((agent) => agent.id === selectedAgent.id);
     if (!updatedSelected) {
       setSelectedAgent(null);
       return;

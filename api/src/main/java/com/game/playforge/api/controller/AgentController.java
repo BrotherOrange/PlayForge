@@ -65,7 +65,7 @@ public class AgentController {
 
         List<Long> agentIds = agents.stream().map(AgentDefinition::getId).collect(Collectors.toList());
         Map<Long, Long> latestThreadByAgent =
-                agentThreadRepository.findLatestActiveThreadIdsByAgentIds(userId, agentIds);
+                agentThreadRepository.findLatestThreadIdsByAgentIds(userId, agentIds);
 
         List<AgentDefinitionResponse> responses = agents.stream()
                 .map(agent -> {

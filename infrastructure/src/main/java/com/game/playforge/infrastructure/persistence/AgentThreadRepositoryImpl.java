@@ -66,16 +66,16 @@ public class AgentThreadRepositoryImpl implements AgentThreadRepository {
     }
 
     @Override
-    public Map<Long, Long> findLatestActiveThreadIdsByAgentIds(Long userId, List<Long> agentIds) {
+    public Map<Long, Long> findLatestThreadIdsByAgentIds(Long userId, List<Long> agentIds) {
         if (agentIds == null || agentIds.isEmpty()) {
             return Map.of();
         }
-        log.debug("批量查询最新ACTIVE会话, userId={}, agentCount={}", userId, agentIds.size());
+        log.debug("批量查询最新会话, userId={}, agentCount={}", userId, agentIds.size());
         List<AgentThread> threads = agentThreadMapper.selectList(
                 new LambdaQueryWrapper<AgentThread>()
                         .select(AgentThread::getId, AgentThread::getAgentId, AgentThread::getCreatedAt)
                         .eq(AgentThread::getUserId, userId)
-                        .eq(AgentThread::getStatus, ThreadStatus.ACTIVE.name())
+                        .ne(AgentThread::getStatus, ThreadStatus.DELETED.name())
                         .in(AgentThread::getAgentId, agentIds)
                         .orderByDesc(AgentThread::getCreatedAt)
                         .orderByDesc(AgentThread::getId));
@@ -84,7 +84,7 @@ public class AgentThreadRepositoryImpl implements AgentThreadRepository {
         for (AgentThread thread : threads) {
             latest.putIfAbsent(thread.getAgentId(), thread.getId());
         }
-        log.debug("批量查询最新ACTIVE会话完成, userId={}, hit={}", userId, latest.size());
+        log.debug("批量查询最新会话完成, userId={}, hit={}", userId, latest.size());
         return latest;
     }
 
