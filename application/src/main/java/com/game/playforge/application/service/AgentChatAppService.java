@@ -44,4 +44,12 @@ public interface AgentChatAppService {
      * @return 流式事件（token/thinking/progress/error）
      */
     Flux<AgentStreamEvent> chatWithProgress(Long userId, Long threadId, String message);
+
+    /**
+     * 检查指定会话是否正在后台处理中
+     *
+     * @param threadId 会话ID
+     * @return true表示后台仍在处理
+     */
+    boolean isThreadProcessing(Long threadId);
 }

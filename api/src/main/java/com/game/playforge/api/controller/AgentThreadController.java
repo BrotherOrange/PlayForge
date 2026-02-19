@@ -28,6 +28,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Agent会话控制器
@@ -157,6 +158,22 @@ public class AgentThreadController {
     }
 
     /**
+     * 检查会话是否正在后台处理中
+     *
+     * @param request HTTP请求
+     * @param id      会话ID
+     * @return 处理状态
+     */
+    @GetMapping("/{id}/processing-status")
+    public ApiResult<Map<String, Boolean>> getProcessingStatus(
+            HttpServletRequest request,
+            @PathVariable Long id) {
+        Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
+        boolean processing = agentChatAppService.isThreadProcessing(id);
+        return ApiResult.success(Map.of("processing", processing));
+    }
+
+    /**
      * 带进度的聊天（SSE）
      * <p>
      * 返回Server-Sent Events流，包含子Agent操作进度与Lead Agent流式输出。
@@ -176,7 +193,7 @@ public class AgentThreadController {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
         log.info("带进度聊天(SSE), userId={}, threadId={}", userId, id);
 
-        SseEmitter emitter = new SseEmitter(300_000L);
+        SseEmitter emitter = new SseEmitter(1_800_000L); // 30 minutes for long Lead Agent workflows
 
         agentChatAppService.chatWithProgress(userId, id, chatRequest.getMessage())
                 .subscribe(

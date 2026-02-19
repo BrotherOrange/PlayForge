@@ -37,6 +37,9 @@ export const getMessages = (threadId: string, limit = 50, offset = 0, signal?: A
     signal,
   });
 
+export const getThreadProcessingStatus = (threadId: string) =>
+  client.get<ApiResponse<{ processing: boolean }>>(`/agent-threads/${threadId}/processing-status`);
+
 export const chatThread = (threadId: string, message: string) =>
   client.post<ApiResponse<{ threadId: string; content: string }>>(
     `/agent-threads/${threadId}/chat`,

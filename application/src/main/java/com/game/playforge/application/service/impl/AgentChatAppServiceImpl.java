@@ -39,6 +39,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
@@ -74,6 +75,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
     private final TransactionTemplate transactionTemplate;
     private final SubAgentService subAgentService;
     private final Map<Long, AsyncTaskManager> taskManagers = new ConcurrentHashMap<>();
+    private final Set<Long> activeProcessingThreads = ConcurrentHashMap.newKeySet();
 
     public AgentChatAppServiceImpl(AgentFactory agentFactory,
                                    AgentThreadRepository agentThreadRepository,
@@ -161,6 +163,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         return Flux.create(sink -> {
             // Use virtual thread so SSE progress events are pushed in real-time
             // while the sync chat blocks until complete.
+            activeProcessingThreads.add(threadId);
             Thread.startVirtualThread(() -> {
                 try {
                     Consumer<AgentStreamEvent> progressCallback = event -> {
@@ -222,6 +225,8 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                         sink.next(AgentStreamEvent.error(e.getMessage()));
                         sink.complete();
                     }
+                } finally {
+                    activeProcessingThreads.remove(threadId);
                 }
             });
 
@@ -253,6 +258,11 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
 
         log.info("已注入SubAgentTool, userId={}, threadId={}", userId, threadId);
         return List.of(subAgentTool);
+    }
+
+    @Override
+    public boolean isThreadProcessing(Long threadId) {
+        return activeProcessingThreads.contains(threadId);
     }
 
     @PreDestroy

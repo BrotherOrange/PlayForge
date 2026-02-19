@@ -19,7 +19,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { listAgents, createAgentWithThread, deleteAgent, getMessages, chatThreadSSE } from '../api/chat';
+import { listAgents, createAgentWithThread, deleteAgent, getMessages, getThreadProcessingStatus, chatThreadSSE } from '../api/chat';
 import TeamPanel from '../components/TeamPanel';
 import { getAgentLabel, getAgentColor, getAgentTypeFromName } from '../constants/agentTypes';
 import { AgentDefinition, AgentMessage, UserProfile } from '../types/api';
@@ -261,6 +261,7 @@ const ChatPage = () => {
 
     let lastCount = -1;
     let stablePolls = 0;
+    let backendConfirmedIdle = false;
     const pollTimer = window.setInterval(async () => {
       if (streamingThreadIdRef.current === activeThreadId) return; // SSE already handling updates
       try {
@@ -269,9 +270,23 @@ const ChatPage = () => {
         if (data.length !== lastCount) {
           setMessages(data);
           stablePolls = 0;
+          backendConfirmedIdle = false;
         } else {
           stablePolls++;
-          if (stablePolls >= 60) {
+          // After 30s of no changes, check if backend is still processing
+          if (stablePolls >= 15 && !backendConfirmedIdle) {
+            try {
+              const statusRes = await getThreadProcessingStatus(activeThreadId);
+              if (statusRes.data.data.processing) {
+                // Backend still working — keep polling, just reset counter
+                stablePolls = 0;
+              } else {
+                backendConfirmedIdle = true;
+              }
+            } catch { /* treat as idle on error */ backendConfirmedIdle = true; }
+          }
+          // Only stop when backend confirmed idle AND stable for 60 polls (2 min)
+          if (backendConfirmedIdle && stablePolls >= 60) {
             window.clearInterval(pollTimer);
           }
         }
