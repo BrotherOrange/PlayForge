@@ -33,8 +33,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
-import java.io.IOException;
-import java.net.SocketTimeoutException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -442,13 +440,12 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
             try {
                 return agent.chat(message);
             } catch (Exception e) {
-                if (!isRetryableError(e) || attempt >= MAX_RATE_LIMIT_RETRIES) {
+                if (!isRateLimitError(e) || attempt >= MAX_RATE_LIMIT_RETRIES) {
                     throw e;
                 }
                 long waitMillis = computeBackoffMillis(attempt);
-                String reason = isRateLimitError(e) ? "速率限制" : "上游网络超时";
-                log.warn("同步聊天触发{}, threadId={}, 等待{}ms后重试 ({}/{})",
-                        reason, threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
+                log.warn("同步聊天触发速率限制, threadId={}, 等待{}ms后重试 ({}/{})",
+                        threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
                 if (!sleepQuietly(waitMillis)) {
                     throw e;
                 }
@@ -474,14 +471,13 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         try {
             tokenStream = agent.chat(message);
         } catch (Exception error) {
-            boolean canRetry = isRetryableError(error)
+            boolean canRetry = isRateLimitError(error)
                     && fullResponse.isEmpty()
                     && attempt < MAX_RATE_LIMIT_RETRIES;
             if (canRetry) {
                 long waitMillis = computeBackoffMillis(attempt);
-                String reason = isRateLimitError(error) ? "速率限制" : "上游网络超时";
-                log.warn("流式聊天初始化触发{}, threadId={}, 等待{}ms后重试 ({}/{})",
-                        reason, threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
+                log.warn("流式聊天初始化触发速率限制, threadId={}, 等待{}ms后重试 ({}/{})",
+                        threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
                 if (!sleepQuietly(waitMillis)) {
                     sink.error(error);
                     return;
@@ -556,14 +552,13 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     if (sink.isCancelled() && !persistWhenClientDisconnected) {
                         return;
                     }
-                    boolean canRetry = isRetryableError(error)
+                    boolean canRetry = isRateLimitError(error)
                             && fullResponse.isEmpty()
                             && attempt < MAX_RATE_LIMIT_RETRIES;
                     if (canRetry) {
                         long waitMillis = computeBackoffMillis(attempt);
-                        String reason = isRateLimitError(error) ? "速率限制" : "上游网络超时";
-                        log.warn("流式聊天触发{}, threadId={}, 等待{}ms后重试 ({}/{})",
-                                reason, threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
+                        log.warn("流式聊天触发速率限制, threadId={}, 等待{}ms后重试 ({}/{})",
+                                threadId, waitMillis, attempt + 1, MAX_RATE_LIMIT_RETRIES);
                         if (!sleepQuietly(waitMillis)) {
                             sink.error(error);
                             return;
@@ -642,10 +637,6 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
         return thinking == null ? "" : thinking.trim();
     }
 
-    private boolean isRetryableError(Throwable throwable) {
-        return isRateLimitError(throwable) || isTransientNetworkError(throwable);
-    }
-
     private boolean isRateLimitError(Throwable throwable) {
         Throwable cursor = throwable;
         while (cursor != null) {
@@ -656,33 +647,6 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
             if (message != null) {
                 String lower = message.toLowerCase();
                 if (lower.contains("rate_limit") || lower.contains("rate limit")) {
-                    return true;
-                }
-            }
-            cursor = cursor.getCause();
-        }
-        return false;
-    }
-
-    private boolean isTransientNetworkError(Throwable throwable) {
-        Throwable cursor = throwable;
-        while (cursor != null) {
-            if (cursor instanceof SocketTimeoutException
-                    || cursor instanceof IOException) {
-                return true;
-            }
-            String simpleName = cursor.getClass().getSimpleName();
-            if ("ResourceAccessException".equals(simpleName)
-                    || "ReadTimeoutException".equals(simpleName)
-                    || "ConnectTimeoutException".equals(simpleName)) {
-                return true;
-            }
-            String message = cursor.getMessage();
-            if (message != null) {
-                String lower = message.toLowerCase();
-                if (lower.contains("i/o error")
-                        || lower.contains("readtimeout")
-                        || lower.contains("timeout")) {
                     return true;
                 }
             }
