@@ -69,10 +69,12 @@ langchain4j:
       api-key: ${OPENAI_API_KEY:}
       model-name: gpt-5.2
       max-tokens: 32768
+      timeout: 600s
     streaming-chat-model:
       api-key: ${OPENAI_API_KEY:}
       model-name: gpt-5.2
       max-tokens: 32768
+      timeout: 600s
   anthropic:
     chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
