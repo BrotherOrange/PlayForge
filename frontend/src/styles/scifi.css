@@ -764,8 +764,8 @@
   padding: 12px 16px;
   border-radius: 10px;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
+  position: relative;
 }
 
 .sf-chat-bubble.user {
@@ -1519,4 +1519,116 @@
   letter-spacing: 0.5px;
   margin-left: 8px;
   text-transform: uppercase;
+}
+
+/* --- Copy Button (message bubble) --- */
+.sf-bubble-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(17,24,39,0.85);
+  border: 1px solid var(--sf-border);
+  color: var(--sf-text-muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  z-index: 2;
+}
+
+.sf-chat-bubble:hover .sf-bubble-copy-btn {
+  opacity: 1;
+}
+
+.sf-bubble-copy-btn:hover {
+  color: var(--sf-primary);
+  border-color: var(--sf-primary);
+}
+
+.sf-bubble-copy-btn.copied {
+  color: #34d399;
+  border-color: rgba(52,211,153,0.4);
+  opacity: 1;
+}
+
+/* --- Collapsible Section (thinking / status) --- */
+.sf-collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+}
+
+.sf-collapsible-icon {
+  font-size: 10px;
+  color: var(--sf-text-muted);
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sf-collapsible-header .sf-chat-bubble-role {
+  margin-bottom: 0;
+}
+
+.sf-status-count {
+  font-size: 10px;
+  color: var(--sf-text-muted);
+  background: rgba(148,163,184,0.12);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.sf-status-latest {
+  font-size: 11px;
+  color: var(--sf-text-muted);
+  margin-left: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.sf-status-group {
+  max-width: 600px;
+  padding: 8px 12px;
+  background: rgba(148,163,184,0.06);
+  border: 1px solid rgba(148,163,184,0.18);
+}
+
+.sf-collapsible-body {
+  margin-top: 8px;
+  animation: sf-progress-fade-in 0.2s ease-out;
+}
+
+/* --- Inactive Sub-Agent (sidebar) --- */
+.sf-sidebar-subagent-item.inactive {
+  opacity: 0.45;
+}
+
+.sf-sidebar-subagent-item.inactive .sf-sidebar-subagent-name {
+  text-decoration: line-through;
+}
+
+/* --- Inactive Sub-Agent (team panel) --- */
+.sf-subagent-card.inactive {
+  opacity: 0.55;
+}
+
+.sf-subagent-inactive-hint {
+  font-size: 11px;
+  color: var(--sf-text-muted);
+  text-align: center;
+  padding: 6px 0;
+  font-style: italic;
 }

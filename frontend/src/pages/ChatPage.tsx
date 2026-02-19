@@ -12,6 +12,10 @@ import {
   TeamOutlined,
   LeftOutlined,
   LoadingOutlined,
+  CopyOutlined,
+  CheckOutlined,
+  RightOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -53,6 +57,9 @@ const ChatPage = () => {
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [teamPanelOpen, setTeamPanelOpen] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [statusExpanded, setStatusExpanded] = useState(false);
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -109,6 +116,29 @@ const ChatPage = () => {
     }
     return null;
   }, [streamingBubbles]);
+
+  const streamingGroups = useMemo(() => {
+    const progress: AgentMessage[] = [];
+    const thinking: AgentMessage[] = [];
+    const assistant: AgentMessage[] = [];
+    for (const b of streamingBubbles) {
+      if (b.role === 'tool' && b.toolName === 'progress') progress.push(b);
+      else if (b.role === 'tool' && b.toolName === 'thinking') thinking.push(b);
+      else if (b.role === 'assistant') assistant.push(b);
+    }
+    const thinkingText = thinking.length > 0 ? thinking[thinking.length - 1].content : '';
+    return { progress, thinkingText, assistant };
+  }, [streamingBubbles]);
+
+  const handleCopy = useCallback(async (id: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      message.error('Failed to copy');
+    }
+  }, []);
 
   // Auto-scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -343,6 +373,8 @@ const ChatPage = () => {
     setStreamingThreadId(activeThreadId);
     setStreamingBubbles([]);
     streamingBubblesRef.current = [];
+    setStatusExpanded(false);
+    setThinkingExpanded(false);
 
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
@@ -602,7 +634,7 @@ const ChatPage = () => {
                         {agentSubAgents.map((sub) => (
                           <div
                             key={sub.id}
-                            className={`sf-sidebar-subagent-item ${selectedAgent?.id === sub.id ? 'active' : ''}`}
+                            className={`sf-sidebar-subagent-item ${selectedAgent?.id === sub.id ? 'active' : ''} ${sub.isActive === false ? 'inactive' : ''}`}
                             onClick={() => handleSelectAgent(sub)}
                           >
                             <span
@@ -718,39 +750,113 @@ const ChatPage = () => {
             </div>
           )}
 
-          {messages.map((msg) => (
+          {messages
+            .filter((msg) => !(msg.role === 'tool' && msg.toolName === 'progress'))
+            .map((msg) => (
             <div key={msg.id} className={getBubbleClassName(msg)}>
               <div className="sf-chat-bubble-role">{getBubbleRoleLabel(msg)}</div>
               <div className={getBubbleContentClass(msg)}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
               </div>
+              <button
+                className={`sf-bubble-copy-btn ${copiedId === msg.id ? 'copied' : ''}`}
+                onClick={() => handleCopy(msg.id, msg.content)}
+                title="Copy"
+              >
+                {copiedId === msg.id ? <CheckOutlined /> : <CopyOutlined />}
+              </button>
             </div>
           ))}
 
-          {isCurrentThreadStreaming &&
-            streamingBubbles.map((msg) => (
-              <div key={msg.id} className={getBubbleClassName(msg)}>
-                <div className="sf-chat-bubble-role">{getBubbleRoleLabel(msg)}</div>
-                <div className={getBubbleContentClass(msg)}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                  {msg.role === 'assistant' && msg.id === lastStreamingAssistantId && (
-                    <span className="sf-chat-cursor" />
+          {isCurrentThreadStreaming && (
+            <>
+              {/* Merged status/progress */}
+              {streamingGroups.progress.length > 0 && (
+                <div className="sf-chat-bubble assistant sf-status-group">
+                  <div className="sf-collapsible-header" onClick={() => setStatusExpanded(!statusExpanded)}>
+                    <span className="sf-collapsible-icon">
+                      {statusExpanded ? <DownOutlined /> : <RightOutlined />}
+                    </span>
+                    <span className="sf-chat-bubble-role">Status</span>
+                    <span className="sf-status-count">{streamingGroups.progress.length}</span>
+                    {!statusExpanded && (
+                      <span className="sf-status-latest">
+                        {streamingGroups.progress[streamingGroups.progress.length - 1].content}
+                      </span>
+                    )}
+                  </div>
+                  {statusExpanded && (
+                    <div className="sf-collapsible-body">
+                      <div className="sf-chat-progress-list">
+                        {streamingGroups.progress.map((msg) => (
+                          <div key={msg.id} className="sf-chat-progress-step done">
+                            <span className="sf-chat-progress-icon sf-chat-progress-check">&#10003;</span>
+                            <span className="sf-chat-progress-text">{msg.content}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              )}
 
-          {isCurrentThreadStreaming && streamingBubbles.length === 0 && (
-              <div className="sf-chat-bubble assistant">
-                <div className="sf-chat-bubble-role">Status</div>
-                <div className="sf-chat-bubble-content">
-                  <div className="sf-chat-typing">
-                    <LoadingOutlined style={{ marginRight: 8 }} />
-                    Running...
+              {/* Thinking (collapsed by default) */}
+              {streamingGroups.thinkingText && (
+                <div className="sf-chat-bubble assistant thinking">
+                  <div className="sf-collapsible-header" onClick={() => setThinkingExpanded(!thinkingExpanded)}>
+                    <span className="sf-collapsible-icon">
+                      {thinkingExpanded ? <DownOutlined /> : <RightOutlined />}
+                    </span>
+                    <span className="sf-chat-bubble-role">
+                      {selectedAgent?.displayName || 'AI'} Thinking
+                    </span>
+                  </div>
+                  {thinkingExpanded && (
+                    <div className="sf-collapsible-body sf-chat-thinking-content sf-markdown">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {streamingGroups.thinkingText}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Assistant response */}
+              {streamingGroups.assistant.map((msg) => (
+                <div key={msg.id} className="sf-chat-bubble assistant">
+                  <div className="sf-chat-bubble-role">
+                    {selectedAgent?.displayName || 'AI'}
+                  </div>
+                  <div className="sf-chat-bubble-content sf-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    {msg.id === lastStreamingAssistantId && (
+                      <span className="sf-chat-cursor" />
+                    )}
+                  </div>
+                  <button
+                    className={`sf-bubble-copy-btn ${copiedId === msg.id ? 'copied' : ''}`}
+                    onClick={() => handleCopy(msg.id, msg.content)}
+                    title="Copy"
+                  >
+                    {copiedId === msg.id ? <CheckOutlined /> : <CopyOutlined />}
+                  </button>
+                </div>
+              ))}
+
+              {/* Loading indicator */}
+              {streamingBubbles.length === 0 && (
+                <div className="sf-chat-bubble assistant">
+                  <div className="sf-chat-bubble-role">Status</div>
+                  <div className="sf-chat-bubble-content">
+                    <div className="sf-chat-typing">
+                      <LoadingOutlined style={{ marginRight: 8 }} />
+                      Running...
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </>
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -758,7 +864,11 @@ const ChatPage = () => {
         {/* Input Area */}
         {selectedAgent && activeThreadId && (
           <div className="sf-chat-input-area">
-            {!isAdmin ? (
+            {selectedAgent.isActive === false ? (
+              <div className="sf-chat-admin-hint">
+                此Agent已被销毁，仅可查看历史对话
+              </div>
+            ) : !isAdmin ? (
               <div className="sf-chat-admin-hint">
                 <LockOutlined style={{ marginRight: 6 }} />
                 需要管理员权限才能发送消息

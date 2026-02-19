@@ -21,5 +21,6 @@ public class AgentDefinitionResponse {
     private String modelName;
     private Long threadId;
     private Long parentThreadId;
+    private Boolean isActive;
     private LocalDateTime createdAt;
 }

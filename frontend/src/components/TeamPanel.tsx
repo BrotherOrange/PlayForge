@@ -8,6 +8,7 @@ import {
   ClockCircleOutlined,
   CloseOutlined,
   SendOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import { message } from 'antd';
 import ReactMarkdown from 'react-markdown';
@@ -445,13 +446,14 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
           const inputValue = state?.inputValue ?? '';
           const hasMessages = messages.length > 0;
           const lastMessage = hasMessages ? messages[messages.length - 1] : null;
-          const isWorking = isSending || lastMessage?.role === 'user';
+          const isDestroyed = agent.isActive === false;
+          const isWorking = !isDestroyed && (isSending || lastMessage?.role === 'user');
           const color = getAgentColor(agent.name);
 
           return (
             <div
               key={agent.id}
-              className={`sf-subagent-card ${isExpanded ? 'expanded' : ''}`}
+              className={`sf-subagent-card ${isExpanded ? 'expanded' : ''} ${isDestroyed ? 'inactive' : ''}`}
             >
               <div
                 className="sf-subagent-card-header"
@@ -465,7 +467,9 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
                   {agent.name.split('-').pop()}
                 </span>
                 <span className="sf-subagent-status">
-                  {isWorking ? (
+                  {isDestroyed ? (
+                    <StopOutlined style={{ color: '#ef4444', fontSize: 12 }} />
+                  ) : isWorking ? (
                     <ClockCircleOutlined style={{ color: '#f59e0b', fontSize: 12 }} />
                   ) : (
                     <CheckCircleOutlined style={{ color: '#34d399', fontSize: 12 }} />
@@ -517,24 +521,28 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
                     </div>
                   )}
 
-                  <div className="sf-subagent-composer" onClick={(e) => e.stopPropagation()}>
-                    <textarea
-                      className="sf-subagent-input"
-                      placeholder="Task"
-                      rows={1}
-                      value={inputValue}
-                      disabled={isSending}
-                      onChange={(e) => updateDraft(agent.id, e.target.value)}
-                      onKeyDown={(e) => handleComposerKeyDown(e, agent)}
-                    />
-                    <button
-                      className="sf-subagent-send-btn"
-                      onClick={() => sendMessageToSubAgent(agent)}
-                      disabled={!inputValue.trim() || isSending}
-                    >
-                      {isSending ? <LoadingOutlined /> : <SendOutlined />}
-                    </button>
-                  </div>
+                  {isDestroyed ? (
+                    <div className="sf-subagent-inactive-hint">Agent destroyed</div>
+                  ) : (
+                    <div className="sf-subagent-composer" onClick={(e) => e.stopPropagation()}>
+                      <textarea
+                        className="sf-subagent-input"
+                        placeholder="Task"
+                        rows={1}
+                        value={inputValue}
+                        disabled={isSending}
+                        onChange={(e) => updateDraft(agent.id, e.target.value)}
+                        onKeyDown={(e) => handleComposerKeyDown(e, agent)}
+                      />
+                      <button
+                        className="sf-subagent-send-btn"
+                        onClick={() => sendMessageToSubAgent(agent)}
+                        disabled={!inputValue.trim() || isSending}
+                      >
+                        {isSending ? <LoadingOutlined /> : <SendOutlined />}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

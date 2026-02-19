@@ -57,6 +57,7 @@ export interface AgentDefinition {
   modelName: string;
   threadId?: string;
   parentThreadId?: string;
+  isActive?: boolean;
   createdAt: string;
 }
 

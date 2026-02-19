@@ -61,7 +61,10 @@ public class AgentDefinitionRepositoryImpl implements AgentDefinitionRepository 
         List<AgentDefinition> definitions = agentDefinitionMapper.selectList(
                 new LambdaQueryWrapper<AgentDefinition>()
                         .eq(AgentDefinition::getUserId, userId)
-                        .eq(AgentDefinition::getIsActive, true)
+                        .and(w -> w
+                                .eq(AgentDefinition::getIsActive, true)
+                                .or()
+                                .isNotNull(AgentDefinition::getParentThreadId))
                         .orderByDesc(AgentDefinition::getCreatedAt));
         log.debug("根据用户ID查询Agent定义, userId={}, count={}", userId, definitions.size());
         return definitions;
