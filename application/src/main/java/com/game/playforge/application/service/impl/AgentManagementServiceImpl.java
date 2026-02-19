@@ -35,6 +35,8 @@ public class AgentManagementServiceImpl implements AgentManagementService {
 
     private static final String LEAD_AGENT_PROMPT_REF = "agents/lead-designer.txt";
     private static final String LEAD_AGENT_TOOL_NAMES = "subAgentTool";
+    private static final String LEAD_AGENT_SKILL_NAMES =
+            "gameDesign,systemDesign,combatDesign,balancingDesign,levelDesign,narrativeDesign,technicalDesign,executionPlanning";
 
 
     @Override
@@ -80,6 +82,7 @@ public class AgentManagementServiceImpl implements AgentManagementService {
         agent.setModelName(modelName);
         agent.setSystemPromptRef(LEAD_AGENT_PROMPT_REF);
         agent.setToolNames(LEAD_AGENT_TOOL_NAMES);
+        agent.setSkillNames(LEAD_AGENT_SKILL_NAMES);
         agent.setMemoryWindowSize(20);
         agent.setTemperature(0.7);
         agent.setMaxTokens(32768);

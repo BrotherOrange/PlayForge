@@ -124,7 +124,7 @@ public class SubAgentService {
             agent.setParentThreadId(parentThreadId);
             agent.setMemoryWindowSize(20);
             agent.setTemperature(parentAgent.getTemperature());
-            agent.setMaxTokens(parentAgent.getMaxTokens());
+            agent.setMaxTokens(AgentConstants.SUB_AGENT_MAX_OUTPUT_TOKENS);
             agent.setIsActive(true);
             agentDefinitionRepository.insert(agent);
 
