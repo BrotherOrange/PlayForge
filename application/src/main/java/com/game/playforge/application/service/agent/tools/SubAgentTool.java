@@ -52,8 +52,10 @@ public class SubAgentTool {
     @Tool("Create a specialized sub-agent. Returns agent info including a NUMERIC threadId for task dispatch. " +
           "IMPORTANT: You MUST use the exact numeric threadId returned (e.g. 2024214713863147522) when calling " +
           "dispatchTask or destroySubAgent. Do NOT invent your own IDs. " +
-          "Available types: systemDesigner, balancingDesigner, levelDesigner, narrativeDesigner, " +
-          "combatDesigner, technicalDesigner, juniorDesigner, default.")
+          "Pipeline types — Phase 2 (Mechanism): systemDesigner, combatDesigner, levelDesigner; " +
+          "Phase X (Technical Gateway): technicalDesigner; " +
+          "Phase 3 (Content): balancingDesigner, narrativeDesigner; " +
+          "Phase 4 (Execution): juniorDesigner; Other: default.")
     public String createSubAgent(
             @P("Agent type (e.g. systemDesigner, combatDesigner)") String type,
             @P("Brief task description for this agent") String task,

@@ -39,21 +39,21 @@ public class AgentTypeRegistry {
 
     @PostConstruct
     public void init() {
-        register("leadDesigner", "Lead Designer (主策划) — creative director and team coordinator",
+        register("leadDesigner", "Lead Designer — vision controller, pipeline orchestrator, global supervisor",
                 "agents/lead-designer.txt", List.of(), List.of());
-        register("systemDesigner", "Systems Designer (系统策划) — gameplay loops, progression, economy",
+        register("systemDesigner", "Systems Designer (Phase 2) — gameplay loops, progression, economy mechanisms",
                 "agents/system-designer.txt", List.of(), List.of());
-        register("balancingDesigner", "Combat/Balancing Designer (数值策划) — formulas, curves, probability",
+        register("balancingDesigner", "Balancing Designer (Phase 3) — formulas, curves, probability, economy tuning",
                 "agents/balancing-designer.txt", List.of(), List.of());
-        register("levelDesigner", "Level Designer (关卡策划) — level layout, encounter pacing, world structure",
+        register("levelDesigner", "Level Designer (Phase 2) — level topology, encounter pacing, spatial flow",
                 "agents/level-designer.txt", List.of(), List.of());
-        register("narrativeDesigner", "Narrative Designer (剧情/文案策划) — story, characters, world-building",
+        register("narrativeDesigner", "Narrative Designer (Phase 3) — story, characters, world-building, dialogue",
                 "agents/narrative-designer.txt", List.of(), List.of());
-        register("combatDesigner", "Combat Designer (战斗策划) — combat systems, skills, enemy AI",
+        register("combatDesigner", "Combat Designer (Phase 2) — combat architecture, skills, enemy AI, combat feel",
                 "agents/combat-designer.txt", List.of(), List.of());
-        register("technicalDesigner", "Technical Designer (技术策划) — feasibility, architecture, performance",
+        register("technicalDesigner", "Technical Designer (Phase X) — technical gateway, feasibility review, implementation planning",
                 "agents/technical-designer.txt", List.of(), List.of());
-        register("juniorDesigner", "Junior/Associate Designer (执行策划) — documentation, data entry, research",
+        register("juniorDesigner", "Execution Planner (Phase 4) — engine-ready data output, config tables, specifications",
                 "agents/junior-designer.txt", List.of(), List.of());
         register("default", "Default agent — blank agent with no preset prompt",
                 null, List.of(), List.of());
