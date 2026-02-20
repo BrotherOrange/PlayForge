@@ -39,24 +39,25 @@ public class AgentTypeRegistry {
 
     @PostConstruct
     public void init() {
+        List<String> defaultSkills = List.of("webSearch");
         register("leadDesigner", "Lead Designer — vision controller, pipeline orchestrator, global supervisor",
-                "agents/lead-designer.txt", List.of(), List.of());
+                "agents/lead-designer.txt", List.of(), defaultSkills);
         register("systemDesigner", "Systems Designer (Phase 2) — gameplay loops, progression, economy mechanisms",
-                "agents/system-designer.txt", List.of(), List.of());
+                "agents/system-designer.txt", List.of(), defaultSkills);
         register("balancingDesigner", "Balancing Designer (Phase 3) — formulas, curves, probability, economy tuning",
-                "agents/balancing-designer.txt", List.of(), List.of());
+                "agents/balancing-designer.txt", List.of(), defaultSkills);
         register("levelDesigner", "Level Designer (Phase 2) — level topology, encounter pacing, spatial flow",
-                "agents/level-designer.txt", List.of(), List.of());
+                "agents/level-designer.txt", List.of(), defaultSkills);
         register("narrativeDesigner", "Narrative Designer (Phase 3) — story, characters, world-building, dialogue",
-                "agents/narrative-designer.txt", List.of(), List.of());
+                "agents/narrative-designer.txt", List.of(), defaultSkills);
         register("combatDesigner", "Combat Designer (Phase 2) — combat architecture, skills, enemy AI, combat feel",
-                "agents/combat-designer.txt", List.of(), List.of());
+                "agents/combat-designer.txt", List.of(), defaultSkills);
         register("technicalDesigner", "Technical Designer (Phase X) — technical gateway, feasibility review, implementation planning",
-                "agents/technical-designer.txt", List.of(), List.of());
+                "agents/technical-designer.txt", List.of(), defaultSkills);
         register("juniorDesigner", "Execution Planner (Phase 4) — engine-ready data output, config tables, specifications",
                 "agents/junior-designer.txt", List.of(), List.of());
         register("default", "Default agent — blank agent with no preset prompt",
-                null, List.of(), List.of());
+                null, List.of(), defaultSkills);
 
         log.info("AgentTypeRegistry初始化完成, 已注册类型: {}", types.keySet());
     }

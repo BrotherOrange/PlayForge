@@ -58,6 +58,11 @@ app:
   security:
     websocket-allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:3000}
 
+google:
+  custom-search:
+    api-key: ${GOOGLE_SEARCH_API_KEY:}
+    csi: ${GOOGLE_SEARCH_CSI:}
+
 logging:
   level:
     org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver: ERROR

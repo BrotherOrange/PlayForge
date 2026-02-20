@@ -36,7 +36,7 @@ public class AgentManagementServiceImpl implements AgentManagementService {
     private static final String LEAD_AGENT_PROMPT_REF = "agents/lead-designer.txt";
     private static final String LEAD_AGENT_TOOL_NAMES = "subAgentTool";
     private static final String LEAD_AGENT_SKILL_NAMES =
-            "gameDesign,systemDesign,combatDesign,balancingDesign,levelDesign,narrativeDesign,technicalDesign,executionPlanning";
+            "gameDesign,systemDesign,combatDesign,balancingDesign,levelDesign,narrativeDesign,technicalDesign,executionPlanning,webSearch";
 
 
     @Override

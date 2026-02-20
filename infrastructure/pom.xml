@@ -69,6 +69,12 @@
             <artifactId>bcrypt</artifactId>
         </dependency>
 
+        <!-- Google Custom Search -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-web-search-engine-google-custom</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

@@ -121,6 +121,8 @@ public class SubAgentService {
             }
             agent.setSystemPrompt(systemPrompt.isEmpty() ? null : systemPrompt);
             agent.setToolNames(mergedTools.isEmpty() ? null : mergedTools);
+            String mergedSkills = buildSkillNames(typeDescriptor);
+            agent.setSkillNames(mergedSkills.isEmpty() ? null : mergedSkills);
             agent.setParentThreadId(parentThreadId);
             agent.setMemoryWindowSize(20);
             agent.setTemperature(parentAgent.getTemperature());
@@ -378,6 +380,13 @@ public class SubAgentService {
             return base + "\n\n<additional-instructions>\n" + additionalPrompt + "\n</additional-instructions>";
         }
         return base;
+    }
+
+    private String buildSkillNames(AgentTypeDescriptor typeDescriptor) {
+        if (typeDescriptor.defaultSkills() == null || typeDescriptor.defaultSkills().isEmpty()) {
+            return "";
+        }
+        return String.join(",", typeDescriptor.defaultSkills());
     }
 
     private String buildToolNames(AgentTypeDescriptor typeDescriptor, String additionalTools) {
