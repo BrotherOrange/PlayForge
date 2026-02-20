@@ -58,10 +58,8 @@ app:
   security:
     websocket-allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:3000}
 
-google:
-  custom-search:
-    api-key: ${GOOGLE_SEARCH_API_KEY:}
-    csi: ${GOOGLE_SEARCH_CSI:}
+tavily:
+  api-key: ${TAVILY_API_KEY:}
 
 logging:
   level:

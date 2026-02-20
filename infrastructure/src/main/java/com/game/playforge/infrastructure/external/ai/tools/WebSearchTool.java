@@ -5,7 +5,7 @@ import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.web.search.WebSearchEngine;
 import dev.langchain4j.web.search.WebSearchOrganicResult;
 import dev.langchain4j.web.search.WebSearchResults;
-import dev.langchain4j.web.search.google.customsearch.GoogleCustomWebSearchEngine;
+import dev.langchain4j.web.search.tavily.TavilyWebSearchEngine;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,8 +17,8 @@ import java.util.stream.Collectors;
 /**
  * 联网搜索工具
  * <p>
- * 基于Google Custom Search API，提供互联网搜索能力，供Agent调用。
- * 仅在配置了API Key和CSI时激活。
+ * 基于Tavily Search API，提供互联网搜索能力，供Agent调用。
+ * 仅在配置了API Key时激活。
  * </p>
  *
  * @author Richard Zhang
@@ -26,21 +26,16 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Component("webSearchTool")
-@ConditionalOnProperty(prefix = "google.custom-search", name = {"api-key", "csi"})
+@ConditionalOnProperty(prefix = "tavily", name = "api-key")
 public class WebSearchTool {
 
     private final WebSearchEngine searchEngine;
 
-    public WebSearchTool(
-            @Value("${google.custom-search.api-key}") String apiKey,
-            @Value("${google.custom-search.csi}") String csi) {
-        this.searchEngine = GoogleCustomWebSearchEngine.builder()
+    public WebSearchTool(@Value("${tavily.api-key}") String apiKey) {
+        this.searchEngine = TavilyWebSearchEngine.builder()
                 .apiKey(apiKey)
-                .csi(csi)
-                .logRequests(true)
-                .logResponses(true)
                 .build();
-        log.info("WebSearchTool初始化完成 (Google Custom Search)");
+        log.info("WebSearchTool初始化完成 (Tavily Search)");
     }
 
     @Tool("Search the internet for up-to-date information. Use this tool when you need real-time data, latest news, technical documentation, or any information that may be outdated in your training data.")

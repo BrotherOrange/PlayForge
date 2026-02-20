@@ -69,10 +69,10 @@
             <artifactId>bcrypt</artifactId>
         </dependency>
 
-        <!-- Google Custom Search -->
+        <!-- Tavily Web Search -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-web-search-engine-google-custom</artifactId>
+            <artifactId>langchain4j-web-search-engine-tavily</artifactId>
         </dependency>
 
         <!-- Lombok -->
