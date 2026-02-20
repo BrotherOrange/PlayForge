@@ -42,7 +42,7 @@ public final class AgentConstants {
     public static final int ANTHROPIC_SAFE_MAX_OUTPUT_TOKENS = 32768;
 
     /**
-     * 子Agent最大输出Token数（鼓励聚焦输出、多轮迭代）
+     * 子Agent最大输出Token数（每个Agent专注一份完整文件）
      */
-    public static final int SUB_AGENT_MAX_OUTPUT_TOKENS = 8192;
+    public static final int SUB_AGENT_MAX_OUTPUT_TOKENS = 24576;
 }
