@@ -12,7 +12,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 echo "==> [1/3] Building frontend"
 cd "${PROJECT_ROOT}/frontend"
-npm ci --no-audit --no-fund
+npm ci --no-audit --no-fund --legacy-peer-deps
 npm run build
 
 echo "==> [2/3] Copying frontend assets to Spring Boot static resources"
