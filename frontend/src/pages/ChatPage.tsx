@@ -294,11 +294,12 @@ const ChatPage = () => {
                 stablePolls = 0;
               } else {
                 backendConfirmedIdle = true;
+                stablePolls = 0; // restart counter for post-idle buffer
               }
-            } catch { /* treat as idle on error */ backendConfirmedIdle = true; }
+            } catch { /* treat as idle on error */ backendConfirmedIdle = true; stablePolls = 0; }
           }
-          // Stop when backend confirmed idle AND stable for 5 more polls (10s)
-          if (backendConfirmedIdle && stablePolls >= 5) {
+          // Stop when backend confirmed idle AND stable for 30s more (no new messages)
+          if (backendConfirmedIdle && stablePolls >= 15) {
             pollStopped = true;
             window.clearInterval(pollTimer);
           }

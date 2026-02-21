@@ -24,7 +24,17 @@ public final class AgentConstants {
     /**
      * 默认记忆窗口大小（消息条数）
      */
-    public static final int DEFAULT_MEMORY_WINDOW_SIZE = 20;
+    public static final int DEFAULT_MEMORY_WINDOW_SIZE = 40;
+
+    /**
+     * 触发摘要压缩的消息数阈值
+     */
+    public static final int SUMMARIZATION_TRIGGER_SIZE = 30;
+
+    /**
+     * 摘要后保留的近期消息数
+     */
+    public static final int RECENT_MESSAGES_TO_KEEP = 20;
 
     /**
      * 记忆缓存过期时间（小时）

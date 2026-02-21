@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -87,6 +88,19 @@ public class ModelProviderRegistry {
             throw new BusinessException(ResultCode.AGENT_PROVIDER_UNAVAILABLE);
         }
         return model;
+    }
+
+    /**
+     * 获取用于内部任务（如摘要压缩）的ChatModel，优先使用成本较低的供应商
+     */
+    public ChatModel getCheapestChatModel() {
+        for (ModelProvider provider : List.of(ModelProvider.GEMINI, ModelProvider.OPENAI, ModelProvider.ANTHROPIC)) {
+            ChatModel model = chatModels.get(provider);
+            if (model != null) {
+                return model;
+            }
+        }
+        throw new BusinessException(ResultCode.AGENT_PROVIDER_UNAVAILABLE);
     }
 
     /**

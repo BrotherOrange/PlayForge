@@ -8,8 +8,8 @@ import com.game.playforge.common.result.ResultCode;
 import com.game.playforge.domain.model.AgentDefinition;
 import com.game.playforge.infrastructure.external.ai.AgentTypeRegistry;
 import com.game.playforge.infrastructure.external.ai.ModelProviderRegistry;
-import com.game.playforge.infrastructure.external.ai.RedisChatMemoryStore;
 import com.game.playforge.infrastructure.external.ai.SkillRegistry;
+import com.game.playforge.infrastructure.external.ai.SummarizingChatMemoryStore;
 import com.game.playforge.infrastructure.external.ai.SkillRegistry.SkillDescriptor;
 import com.game.playforge.infrastructure.external.ai.SystemPromptResolver;
 import com.game.playforge.infrastructure.external.ai.ToolRegistry;
@@ -50,7 +50,7 @@ public class AgentFactory {
     private final ToolRegistry toolRegistry;
     private final SkillRegistry skillRegistry;
     private final AgentTypeRegistry agentTypeRegistry;
-    private final RedisChatMemoryStore redisChatMemoryStore;
+    private final SummarizingChatMemoryStore summarizingChatMemoryStore;
 
     /**
      * 创建同步聊天Agent代理
@@ -197,7 +197,7 @@ public class AgentFactory {
         return MessageWindowChatMemory.builder()
                 .id(threadId)
                 .maxMessages(windowSize)
-                .chatMemoryStore(redisChatMemoryStore)
+                .chatMemoryStore(summarizingChatMemoryStore)
                 .build();
     }
 
