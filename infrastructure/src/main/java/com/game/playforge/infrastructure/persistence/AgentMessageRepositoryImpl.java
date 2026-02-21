@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -67,6 +68,7 @@ public class AgentMessageRepositoryImpl implements AgentMessageRepository {
         log.debug("查询会话消息, threadId={}, limit={}, offset={}", threadId, safeLimit, safeOffset);
         List<AgentMessage> messages = agentMessageMapper.selectByThreadIdPaged(
                 threadId, safeLimit, safeOffset);
+        Collections.reverse(messages); // DB returns DESC, reverse to chronological ASC
         log.debug("查询会话消息结果, threadId={}, count={}", threadId, messages.size());
         return messages;
     }

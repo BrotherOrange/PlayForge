@@ -230,24 +230,16 @@ const ChatPage = () => {
     }
   }, [allAgents, selectedAgent]);
 
-  // Keep team panel in near-realtime while lead agent is active.
+  // Unified agent list polling: only when streaming OR team panel is open.
+  // Single timer avoids overlapping intervals.
   useEffect(() => {
-    if (isSubAgent || !teamPanelOpen || !currentLeadAgent?.threadId) {
-      return;
-    }
-    const timer = setInterval(loadAgents, 2000);
-    return () => clearInterval(timer);
-  }, [isSubAgent, teamPanelOpen, currentLeadAgent?.threadId, loadAgents]);
-
-  // While lead/sub-agent is streaming, refresh agent list so new sub-agents appear immediately.
-  useEffect(() => {
-    if (!streamingThreadId) {
-      return;
-    }
+    const needPolling = streamingThreadId || (teamPanelOpen && !isSubAgent && currentLeadAgent?.threadId);
+    if (!needPolling) return;
+    const interval = streamingThreadId ? 1500 : 3000;
     loadAgents();
-    const timer = window.setInterval(loadAgents, 1200);
+    const timer = window.setInterval(loadAgents, interval);
     return () => window.clearInterval(timer);
-  }, [streamingThreadId, loadAgents]);
+  }, [streamingThreadId, teamPanelOpen, isSubAgent, currentLeadAgent?.threadId, loadAgents]);
 
   // Auto-open team panel when sub-agents appear
   useEffect(() => {
@@ -280,7 +272,9 @@ const ChatPage = () => {
 
     let stablePolls = 0;
     let backendConfirmedIdle = false;
+    let pollStopped = false;
     const pollTimer = window.setInterval(async () => {
+      if (pollStopped) return;
       if (streamingThreadIdRef.current === activeThreadId) return; // SSE already handling updates
       try {
         const res = await getMessages(activeThreadId, MESSAGE_FETCH_LIMIT, 0);
@@ -292,20 +286,20 @@ const ChatPage = () => {
           backendConfirmedIdle = false;
         } else {
           stablePolls++;
-          // After 30s of no changes, check if backend is still processing
-          if (stablePolls >= 15 && !backendConfirmedIdle) {
+          // After 10s of no changes, check if backend is still processing
+          if (stablePolls >= 5 && !backendConfirmedIdle) {
             try {
               const statusRes = await getThreadProcessingStatus(activeThreadId);
               if (statusRes.data.data.processing) {
-                // Backend still working — keep polling, just reset counter
                 stablePolls = 0;
               } else {
                 backendConfirmedIdle = true;
               }
             } catch { /* treat as idle on error */ backendConfirmedIdle = true; }
           }
-          // Only stop when backend confirmed idle AND stable for 60 polls (2 min)
-          if (backendConfirmedIdle && stablePolls >= 60) {
+          // Stop when backend confirmed idle AND stable for 5 more polls (10s)
+          if (backendConfirmedIdle && stablePolls >= 5) {
+            pollStopped = true;
             window.clearInterval(pollTimer);
           }
         }
@@ -386,7 +380,7 @@ const ChatPage = () => {
         break;
       }
       await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 320 * (i + 1));
+        window.setTimeout(resolve, 150 * (i + 1));
       });
     }
     return latestMessages;

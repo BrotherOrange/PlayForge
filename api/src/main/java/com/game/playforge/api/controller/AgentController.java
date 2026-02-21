@@ -57,7 +57,7 @@ public class AgentController {
     @GetMapping
     public ApiResult<List<AgentDefinitionResponse>> listAgents(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
-        log.info("列出用户Agent, userId={}", userId);
+        log.debug("列出用户Agent, userId={}", userId);
         List<AgentDefinition> agents = agentManagementService.listAgents(userId);
         if (agents.isEmpty()) {
             return ApiResult.success(List.of());

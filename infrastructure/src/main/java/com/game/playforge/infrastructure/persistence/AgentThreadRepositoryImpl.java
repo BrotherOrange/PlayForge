@@ -71,18 +71,13 @@ public class AgentThreadRepositoryImpl implements AgentThreadRepository {
             return Map.of();
         }
         log.debug("批量查询最新会话, userId={}, agentCount={}", userId, agentIds.size());
-        List<AgentThread> threads = agentThreadMapper.selectList(
-                new LambdaQueryWrapper<AgentThread>()
-                        .select(AgentThread::getId, AgentThread::getAgentId, AgentThread::getCreatedAt)
-                        .eq(AgentThread::getUserId, userId)
-                        .ne(AgentThread::getStatus, ThreadStatus.DELETED.name())
-                        .in(AgentThread::getAgentId, agentIds)
-                        .orderByDesc(AgentThread::getCreatedAt)
-                        .orderByDesc(AgentThread::getId));
+        List<Map<String, Object>> rows = agentThreadMapper.selectLatestThreadIdsByAgentIds(userId, agentIds);
 
         Map<Long, Long> latest = new LinkedHashMap<>();
-        for (AgentThread thread : threads) {
-            latest.putIfAbsent(thread.getAgentId(), thread.getId());
+        for (Map<String, Object> row : rows) {
+            Long agentId = ((Number) row.get("agentId")).longValue();
+            Long threadId = ((Number) row.get("threadId")).longValue();
+            latest.put(agentId, threadId);
         }
         log.debug("批量查询最新会话完成, userId={}, hit={}", userId, latest.size());
         return latest;

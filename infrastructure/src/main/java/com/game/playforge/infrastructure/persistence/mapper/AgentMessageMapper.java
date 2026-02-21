@@ -22,14 +22,10 @@ public interface AgentMessageMapper extends BaseMapper<AgentMessage> {
 
     @Select("""
             SELECT id, thread_id, role, content, tool_name, token_count, created_at
-            FROM (
-                SELECT id, thread_id, role, content, tool_name, token_count, created_at
-                FROM t_agent_message
-                WHERE thread_id = #{threadId}
-                ORDER BY created_at DESC, id DESC
-                LIMIT #{limit} OFFSET #{offset}
-            ) latest
-            ORDER BY latest.created_at ASC, latest.id ASC
+            FROM t_agent_message
+            WHERE thread_id = #{threadId}
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit} OFFSET #{offset}
             """)
     List<AgentMessage> selectByThreadIdPaged(
             @Param("threadId") Long threadId,
