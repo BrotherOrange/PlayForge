@@ -13,6 +13,9 @@ PlayForge 是一个 AI 驱动的游戏设计平台，基于 Spring Boot 和 Reac
 - **令牌自动刷新** — 通过 Axios 拦截器透明刷新 access token
 - **管理员权限控制** — 仅管理员用户可创建 AI 智能体和发送聊天消息
 - **Markdown 渲染** — AI 回复实时渲染 Markdown 格式（表格、代码块、列表等）
+- **联网搜索** — 基于 Tavily 的联网搜索工具，辅助智能体调研信息
+- **技能系统** — 模块化的提示词技能（系统设计、战斗设计、叙事设计、关卡设计等）
+- **自动摘要** — LLM 自动生成对话摘要，压缩长对话以保持上下文窗口可用
 
 ## 技术栈
 
@@ -20,9 +23,9 @@ PlayForge 是一个 AI 驱动的游戏设计平台，基于 Spring Boot 和 Reac
 |------|-----|
 | 后端 | Java 25、Spring Boot 3.5、MyBatis-Plus、Spring Data Redis、WebSocket |
 | 前端 | React 19、TypeScript 5、Ant Design 6、Axios、React Router 7 |
-| AI/LLM | LangChain4J 1.11.0（OpenAI、Anthropic、Gemini） |
+| AI/LLM | LangChain4J 1.11.0（OpenAI、Anthropic、Gemini）、Tavily |
 | 存储 | MySQL（Flyway 迁移）、Redis、阿里云 OSS |
-| 部署 | Docker（多阶段构建）、阿里云 SAE |
+| 部署 | Docker（仅运行时镜像，本地构建 fat JAR）、阿里云 SAE |
 
 ## 项目结构
 
@@ -74,6 +77,8 @@ cp deploy/env.example .env
 | `OPENAI_API_KEY` | OpenAI API 密钥 |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 |
 | `GEMINI_API_KEY` | Google Gemini API 密钥 |
+| `TAVILY_API_KEY` | Tavily 联网搜索 API 密钥 |
+| `JWT_SECRET` | JWT 签名密钥（至少 32 字节） |
 
 > LLM API 密钥为可选项 — 未配置密钥的供应商会在启动时自动禁用。
 
@@ -113,22 +118,26 @@ cd frontend && npm run build
 
 ## Docker
 
+项目采用两步构建：`deploy/package.sh` 在本地构建前端和后端生成 fat JAR，然后 `docker build` 创建最小运行时镜像（Eclipse Temurin 25 JRE）。
+
 ```bash
-# 构建镜像
+# 1. 本地构建 fat JAR（前端 + 后端）
+bash deploy/package.sh
+
+# 2. 构建运行时 Docker 镜像
 docker build -t playforge .
 
-# 运行容器
+# 3. 运行容器
 docker run -p 8080:8080 --env-file .env playforge
 ```
-
-多阶段 Dockerfile 会先构建前端（TypeScript → JS），将产物打包到 Spring Boot 静态资源中，最终生成基于最小 JRE 的运行时镜像。
 
 ## 部署
 
 `deploy/` 目录提供了阿里云 SAE 部署脚本：
 
 ```bash
-./deploy/deploy-all.sh        # 构建、推送到 ACR、部署到 SAE
+./deploy/deploy-all.sh [tag]   # 完整流水线：本地构建 → Docker 镜像 → 推送 ACR → 部署 SAE
+./deploy/package.sh            # 本地构建前端 + 后端 fat JAR
 ./deploy/build.sh              # 仅构建 Docker 镜像
 ./deploy/push.sh               # 推送镜像到 ACR
 ./deploy/deploy.sh             # 部署到 SAE

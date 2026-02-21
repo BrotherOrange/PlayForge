@@ -43,3 +43,4 @@ application-local.properties
 ### Deploy secrets ###
 deploy/deploy-all.sh
 /AGENTS.md
+/CLAUDE.md

@@ -13,6 +13,9 @@ PlayForge is an AI-powered game design platform built with Spring Boot and React
 - **Token Auto-Refresh** — Transparent access token refresh via Axios interceptors
 - **Admin Access Control** — Only admin users can create AI agents and send chat messages
 - **Markdown Rendering** — AI responses rendered in real-time with full Markdown support (tables, code blocks, lists)
+- **Web Search** — Tavily-powered web search tool for agent research
+- **Skill System** — Modular prompt skills (system design, combat, narrative, level design, etc.)
+- **Auto-Summarization** — LLM-generated summaries compress long conversations to stay within context limits
 
 ## Tech Stack
 
@@ -20,9 +23,9 @@ PlayForge is an AI-powered game design platform built with Spring Boot and React
 |-------|-----------|
 | Backend | Java 25, Spring Boot 3.5, MyBatis-Plus, Spring Data Redis, WebSocket |
 | Frontend | React 19, TypeScript 5, Ant Design 6, Axios, React Router 7 |
-| AI/LLM | LangChain4J 1.11.0 (OpenAI, Anthropic, Gemini) |
+| AI/LLM | LangChain4J 1.11.0 (OpenAI, Anthropic, Gemini), Tavily |
 | Storage | MySQL (Flyway migrations), Redis, Alibaba Cloud OSS |
-| Deployment | Docker (multi-stage), Alibaba Cloud SAE |
+| Deployment | Docker (runtime-only, local fat-JAR build), Alibaba Cloud SAE |
 
 ## Project Structure
 
@@ -74,6 +77,8 @@ Key variables:
 | `OPENAI_API_KEY` | OpenAI API key |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `GEMINI_API_KEY` | Google Gemini API key |
+| `TAVILY_API_KEY` | Tavily web search API key |
+| `JWT_SECRET` | JWT signing secret (min 32 bytes) |
 
 > LLM API keys are optional — providers with missing keys are automatically disabled at startup.
 
@@ -113,22 +118,26 @@ cd frontend && npm run build
 
 ## Docker
 
+The project uses a two-step build: `deploy/package.sh` builds the frontend and backend locally into a fat JAR, then `docker build` creates a minimal runtime image (Eclipse Temurin 25 JRE).
+
 ```bash
-# Build image
+# 1. Build the fat JAR locally (frontend + backend)
+bash deploy/package.sh
+
+# 2. Build the runtime Docker image
 docker build -t playforge .
 
-# Run container
+# 3. Run the container
 docker run -p 8080:8080 --env-file .env playforge
 ```
-
-The multi-stage Dockerfile builds the frontend (TypeScript → JS), bundles it into Spring Boot static resources, and produces a minimal JRE-based runtime image.
 
 ## Deployment
 
 Deploy scripts are provided in `deploy/` for Alibaba Cloud SAE:
 
 ```bash
-./deploy/deploy-all.sh        # Build, push to ACR, and deploy to SAE
+./deploy/deploy-all.sh [tag]   # Full pipeline: local build → Docker image → push ACR → deploy SAE
+./deploy/package.sh            # Build frontend + backend fat JAR locally
 ./deploy/build.sh              # Build Docker image only
 ./deploy/push.sh               # Push image to ACR
 ./deploy/deploy.sh             # Deploy to SAE
