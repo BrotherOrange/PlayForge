@@ -4,11 +4,12 @@ import com.game.playforge.common.exception.BusinessException;
 import com.game.playforge.common.result.ApiResult;
 import com.game.playforge.common.result.ResultCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -34,9 +35,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResult<Void>> handleBusinessException(BusinessException e) {
         ResultCode resultCode = e.getResultCode();
-        log.warn("业务异常, code={}, message={}", resultCode.getCode(), e.getMessage());
+        String message = (e.getMessage() == null || e.getMessage().isBlank())
+                ? resultCode.getMessage()
+                : e.getMessage();
+        log.warn("业务异常, code={}, message={}", resultCode.getCode(), message);
         return ResponseEntity.status(resultCode.getHttpStatus())
-                .body(ApiResult.fail(resultCode));
+                .body(ApiResult.fail(resultCode.getCode(), message));
     }
 
     /**
@@ -57,19 +61,6 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理请求方法不支持异常（常见于扫描器探测）
-     *
-     * @param e 方法不支持异常
-     * @return 405响应
-     */
-    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ApiResult<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
-        log.debug("请求方法不支持: {}", e.getMessage());
-        return ResponseEntity.status(405)
-                .body(ApiResult.fail(ResultCode.NOT_FOUND));
-    }
-
-    /**
      * 处理静态资源未找到异常（常见于扫描器探测）
      *
      * @param e 资源未找到异常
@@ -80,6 +71,32 @@ public class GlobalExceptionHandler {
         log.debug("资源未找到: {}", e.getMessage());
         return ResponseEntity.status(ResultCode.NOT_FOUND.getHttpStatus())
                 .body(ApiResult.fail(ResultCode.NOT_FOUND));
+    }
+
+    /**
+     * 处理客户端断连异常（Broken pipe）
+     * <p>
+     * 客户端在响应传输中主动断开连接，无需返回响应体（连接已关闭）。
+     * </p>
+     *
+     * @param e 客户端断连异常
+     */
+    @ExceptionHandler(ClientAbortException.class)
+    public void handleClientAbort(ClientAbortException e) {
+        log.debug("客户端断开连接: {}", e.getMessage());
+    }
+
+    /**
+     * 处理异步请求断连异常（Spring 6+）
+     * <p>
+     * 客户端在异步响应写入过程中断开连接，无需返回响应体。
+     * </p>
+     *
+     * @param e 异步请求不可用异常
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException e) {
+        log.debug("异步请求客户端断开连接: {}", e.getMessage());
     }
 
     /**

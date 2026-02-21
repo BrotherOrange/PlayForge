@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * 统一业务结果码枚举
  * <p>
- * 编码规范：0=成功, 10xx=认证, 20xx=用户, 9xxx=系统。
+ * 编码规范：0=成功, 10xx=认证, 20xx=用户, 30xx=OSS, 40xx=客户端, 50xx=Agent, 9xxx=系统。
  * 每个业务码绑定对应的HTTP状态码，供异常处理器和拦截器统一使用。
  * </p>
  *
@@ -74,6 +74,43 @@ public enum ResultCode {
      * 资源不存在
      */
     NOT_FOUND(4001, "资源不存在", 404),
+
+    /**
+     * 需要管理员权限
+     */
+    ADMIN_REQUIRED(4002, "需要管理员权限，请联系管理员开通", 403),
+
+    // ---------- 50xx - Agent相关 ----------
+
+    /**
+     * Agent不存在
+     */
+    AGENT_NOT_FOUND(5001, "Agent不存在", 404),
+
+    /**
+     * 会话不存在
+     */
+    THREAD_NOT_FOUND(5002, "会话不存在", 404),
+
+    /**
+     * 无权访问该会话
+     */
+    THREAD_ACCESS_DENIED(5003, "无权访问该会话", 403),
+
+    /**
+     * 无权操作该Agent
+     */
+    AGENT_ACCESS_DENIED(5006, "无权操作该Agent", 403),
+
+    /**
+     * AI服务暂不可用
+     */
+    AGENT_PROVIDER_UNAVAILABLE(5004, "AI服务暂不可用", 503),
+
+    /**
+     * 工具执行错误
+     */
+    AGENT_TOOL_ERROR(5005, "工具执行错误", 500),
 
     // ---------- 9xxx - 系统级 ----------
 

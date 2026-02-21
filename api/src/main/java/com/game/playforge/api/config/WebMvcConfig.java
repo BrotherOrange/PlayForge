@@ -33,8 +33,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/api/auth/register",
                         "/api/auth/login",
-                        "/api/auth/refresh",
-                        "/api/oss/policy"
+                        "/api/auth/refresh"
                 );
     }
 }

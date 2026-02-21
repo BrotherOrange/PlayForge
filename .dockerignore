@@ -8,8 +8,9 @@
 .vscode/
 *.swp
 
-# Build outputs
+# Build outputs (keep playforge-start/target for pre-built JAR)
 **/target/
+!playforge-start/target/*.jar
 frontend/build/
 frontend/node_modules/
 

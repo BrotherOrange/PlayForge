@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Upload, message } from 'antd';
 import { PlusOutlined, LoadingOutlined } from '@ant-design/icons';
 import type { RcFile } from 'antd/es/upload';
@@ -14,8 +14,16 @@ interface AvatarUploadProps {
 const AvatarUpload = ({ value, onChange }: AvatarUploadProps) => {
   const [loading, setLoading] = useState(false);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
+  const localPreviewRef = useRef<string | null>(null);
 
   const displayUrl = localPreview || value;
+
+  useEffect(() => () => {
+    if (localPreviewRef.current) {
+      URL.revokeObjectURL(localPreviewRef.current);
+      localPreviewRef.current = null;
+    }
+  }, []);
 
   const beforeUpload = (file: RcFile): boolean => {
     const isImage = file.type.startsWith('image/');
@@ -35,7 +43,7 @@ const AvatarUpload = ({ value, onChange }: AvatarUploadProps) => {
     const { file, onSuccess, onError } = options;
     setLoading(true);
     try {
-      const policyRes = await getUploadPolicy('avatars');
+      const policyRes = await getUploadPolicy();
       const policy = policyRes.data.data;
 
       const rcFile = file as RcFile;
@@ -52,7 +60,12 @@ const AvatarUpload = ({ value, onChange }: AvatarUploadProps) => {
 
       await axios.post(policy.host, formData);
 
-      setLocalPreview(URL.createObjectURL(rcFile));
+      const previewUrl = URL.createObjectURL(rcFile);
+      if (localPreviewRef.current) {
+        URL.revokeObjectURL(localPreviewRef.current);
+      }
+      localPreviewRef.current = previewUrl;
+      setLocalPreview(previewUrl);
       onChange?.(key);
       onSuccess?.(key);
       message.success('头像上传成功');
@@ -77,7 +90,7 @@ const AvatarUpload = ({ value, onChange }: AvatarUploadProps) => {
       ) : (
         <div>
           {loading ? <LoadingOutlined /> : <PlusOutlined />}
-          <div style={{ marginTop: 8 }}>上传头像</div>
+          <div style={{ marginTop: 8, color: '#94a3b8' }}>上传头像</div>
         </div>
       )}
     </Upload>

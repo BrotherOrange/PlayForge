@@ -4,6 +4,9 @@ spring:
   profiles:
     active: local
 
+  flyway:
+    ignore-migration-patterns: "*:missing"
+
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:rm-rj9a593mtk0vu1scf.mysql.rds-aliyun-america.rds.aliyuncs.com}:3306/${MYSQL_DB:play-forge}?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC
     username: ${MYSQL_USERNAME:game_root}
@@ -51,25 +54,53 @@ auth:
     access-token-expire-minutes: 30
     refresh-token-expire-days: 7
 
+app:
+  security:
+    websocket-allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:3000}
+
+tavily:
+  api-key: ${TAVILY_API_KEY:}
+
+logging:
+  level:
+    org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver: ERROR
+    org.apache.coyote.http11.Http11Processor: WARN
+
 langchain4j:
   open-ai:
     chat-model:
       api-key: ${OPENAI_API_KEY:}
-      model-name: gpt-5.2-pro
+      model-name: gpt-5.2
+      max-tokens: 32768
+      timeout: 600s
     streaming-chat-model:
       api-key: ${OPENAI_API_KEY:}
-      model-name: gpt-5.2-pro
+      model-name: gpt-5.2
+      max-tokens: 32768
+      timeout: 600s
   anthropic:
     chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
-      model-name: claude-opus-4-6
+      model-name: claude-sonnet-4-6
+      max-tokens: 32768
+      timeout: 600s
+      max-retries: 0
+      log-requests: true
+      log-responses: true
     streaming-chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
-      model-name: claude-opus-4-6
+      model-name: claude-sonnet-4-6
+      max-tokens: 32768
+      timeout: 600s
+      max-retries: 0
   google-ai-gemini:
     chat-model:
       api-key: ${GEMINI_API_KEY:}
-      model-name: gemini-3-pro-preview
+      model-name: gemini-3-flash-preview
+      max-output-tokens: 32768
+      timeout: 300s
     streaming-chat-model:
       api-key: ${GEMINI_API_KEY:}
-      model-name: gemini-3-pro-preview
+      model-name: gemini-3-flash-preview
+      max-output-tokens: 32768
+      timeout: 300s

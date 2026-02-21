@@ -2,6 +2,7 @@ package com.game.playforge.api.controller;
 
 import com.game.playforge.api.dto.request.UpdateProfileRequest;
 import com.game.playforge.api.dto.response.UserProfileResponse;
+import com.game.playforge.api.mapper.UserMapper;
 import com.game.playforge.application.service.UserService;
 import com.game.playforge.common.constant.AuthConstants;
 import com.game.playforge.common.result.ApiResult;
@@ -27,6 +28,7 @@ public class UserController {
 
     private final UserService userService;
     private final OssService ossService;
+    private final UserMapper userMapper;
 
     /**
      * 获取当前用户资料
@@ -63,14 +65,8 @@ public class UserController {
     }
 
     private UserProfileResponse toResponse(User user) {
-        UserProfileResponse response = new UserProfileResponse();
-        response.setId(user.getId());
-        response.setPhone(user.getPhone());
-        response.setNickname(user.getNickname());
-        response.setAvatarKey(user.getAvatarUrl());
+        UserProfileResponse response = userMapper.toResponse(user);
         response.setAvatarUrl(ossService.generateSignedUrl(user.getAvatarUrl()));
-        response.setBio(user.getBio());
-        response.setCreatedAt(user.getCreatedAt());
         return response;
     }
 }

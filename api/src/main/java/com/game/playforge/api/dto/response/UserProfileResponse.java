@@ -19,5 +19,6 @@ public class UserProfileResponse {
     private String avatarUrl;
     private String avatarKey;
     private String bio;
+    private Boolean isAdmin;
     private LocalDateTime createdAt;
 }

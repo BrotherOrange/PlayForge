@@ -69,6 +69,12 @@
             <artifactId>bcrypt</artifactId>
         </dependency>
 
+        <!-- Tavily Web Search -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-web-search-engine-tavily</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

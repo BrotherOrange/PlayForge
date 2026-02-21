@@ -29,25 +29,45 @@ aliyun:
     access-key-secret: ${OSS_ACCESS_KEY_SECRET}
     bucket-name: ${OSS_BUCKET_NAME:oss-game-design}
 
+app:
+  security:
+    websocket-allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:3000}
+
 langchain4j:
   open-ai:
     chat-model:
       api-key: ${OPENAI_API_KEY:}
-      model-name: gpt-5.2-pro
+      model-name: gpt-5.2
+      max-tokens: 32768
+      timeout: 600s
     streaming-chat-model:
       api-key: ${OPENAI_API_KEY:}
-      model-name: gpt-5.2-pro
+      model-name: gpt-5.2
+      max-tokens: 32768
+      timeout: 600s
   anthropic:
     chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
-      model-name: claude-opus-4-6
+      model-name: claude-sonnet-4-6
+      max-tokens: 32768
+      timeout: 600s
+      max-retries: 0
+      log-requests: true
+      log-responses: true
     streaming-chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
-      model-name: claude-opus-4-6
+      model-name: claude-sonnet-4-6
+      max-tokens: 32768
+      timeout: 600s
+      max-retries: 0
   google-ai-gemini:
     chat-model:
       api-key: ${GEMINI_API_KEY:}
-      model-name: gemini-3-pro-preview
+      model-name: gemini-3-flash-preview
+      max-output-tokens: 32768
+      timeout: 300s
     streaming-chat-model:
       api-key: ${GEMINI_API_KEY:}
-      model-name: gemini-3-pro-preview
+      model-name: gemini-3-flash-preview
+      max-output-tokens: 32768
+      timeout: 300s
