@@ -52,8 +52,8 @@ langchain4j:
       max-tokens: 32768
       timeout: 600s
       max-retries: 0
-      log-requests: true
-      log-responses: true
+      log-requests: false
+      log-responses: false
     streaming-chat-model:
       api-key: ${ANTHROPIC_API_KEY:}
       model-name: claude-sonnet-4-6

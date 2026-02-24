@@ -75,6 +75,7 @@ public class SummarizingChatMemoryStore implements ChatMemoryStore {
             recentlySummarized.put(memoryId, System.currentTimeMillis());
         } catch (Exception e) {
             log.warn("记忆摘要生成失败, 回退到原始消息, memoryId={}", memoryId, e);
+            recentlySummarized.put(memoryId, System.currentTimeMillis());
             delegate.updateMessages(memoryId, messages);
         }
     }

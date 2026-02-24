@@ -24,12 +24,12 @@ public final class AgentConstants {
     /**
      * 默认记忆窗口大小（消息条数）
      */
-    public static final int DEFAULT_MEMORY_WINDOW_SIZE = 40;
+    public static final int DEFAULT_MEMORY_WINDOW_SIZE = 60;
 
     /**
      * 触发摘要压缩的消息数阈值
      */
-    public static final int SUMMARIZATION_TRIGGER_SIZE = 30;
+    public static final int SUMMARIZATION_TRIGGER_SIZE = 50;
 
     /**
      * 摘要后保留的近期消息数
@@ -55,4 +55,9 @@ public final class AgentConstants {
      * 子Agent最大输出Token数（每个Agent专注一份完整文件）
      */
     public static final int SUB_AGENT_MAX_OUTPUT_TOKENS = 24576;
+
+    /**
+     * 同一父线程下同时存活的子Agent数量上限（超过需分批创建）
+     */
+    public static final int MAX_CONCURRENT_SUB_AGENTS = 10;
 }

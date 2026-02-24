@@ -3,6 +3,7 @@ package com.game.playforge.application.service.agent.tools;
 import com.game.playforge.application.dto.AgentStreamEvent;
 import com.game.playforge.application.service.agent.SubAgentService;
 import com.game.playforge.application.service.agent.SubAgentService.SubAgentInfo;
+import com.game.playforge.common.constant.AgentConstants;
 import com.game.playforge.infrastructure.external.ai.AsyncTaskManager;
 import com.game.playforge.infrastructure.external.ai.AsyncTaskManager.TaskResult;
 import dev.langchain4j.agent.tool.P;
@@ -55,13 +56,24 @@ public class SubAgentTool {
           "Pipeline types — Phase 2 (Mechanism): systemDesigner, combatDesigner, levelDesigner; " +
           "Phase X (Technical Gateway): technicalDesigner; " +
           "Phase 3 (Content): balancingDesigner, narrativeDesigner; " +
-          "Phase 4 (Execution): juniorDesigner; Other: default.")
+          "Phase 4 (Execution): juniorDesigner; Other: default. " +
+          "LIMIT: Max " + AgentConstants.MAX_CONCURRENT_SUB_AGENTS + " sub-agents at a time. " +
+          "If you need more, dispatch tasks to existing agents, collect results, destroy them, then create a new batch.")
     public String createSubAgent(
             @P("Agent type (e.g. systemDesigner, combatDesigner)") String type,
             @P("Brief task description for this agent") String task,
             @P("Additional system prompt instructions (optional, can be empty)") String additionalPrompt,
             @P("Additional tool names, comma-separated (optional, can be empty)") String additionalTools) {
         try {
+            List<SubAgentInfo> existing = subAgentService.listTeamAgents(userId, parentThreadId);
+            if (existing.size() >= AgentConstants.MAX_CONCURRENT_SUB_AGENTS) {
+                return String.format(
+                        "Cannot create sub-agent: limit of %d concurrent sub-agents reached (currently %d active). " +
+                        "Please dispatch tasks to existing agents, await results, destroy completed agents, " +
+                        "then create new ones in the next batch.",
+                        AgentConstants.MAX_CONCURRENT_SUB_AGENTS, existing.size());
+            }
+
             SubAgentInfo info = subAgentService.createSubAgent(
                     userId, parentThreadId, type, task,
                     normalizeEmpty(additionalPrompt),

@@ -27,6 +27,8 @@
 
     <!-- Local profile: console only -->
     <springProfile name="local">
+        <logger name="dev.langchain4j" level="WARN"/>
+        <logger name="dev.ai4j" level="WARN"/>
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
         </root>
@@ -34,6 +36,8 @@
 
     <!-- Prod profile: console + file -->
     <springProfile name="prod">
+        <logger name="dev.langchain4j" level="WARN"/>
+        <logger name="dev.ai4j" level="WARN"/>
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
