@@ -3,7 +3,6 @@ package com.game.playforge.application.service.agent.tools;
 import com.game.playforge.application.dto.AgentStreamEvent;
 import com.game.playforge.application.service.agent.SubAgentService;
 import com.game.playforge.application.service.agent.SubAgentService.SubAgentInfo;
-import com.game.playforge.common.constant.AgentConstants;
 import com.game.playforge.infrastructure.external.ai.AsyncTaskManager;
 import com.game.playforge.infrastructure.external.ai.AsyncTaskManager.TaskResult;
 import dev.langchain4j.agent.tool.P;
@@ -57,36 +56,13 @@ public class SubAgentTool {
           "Phase X (Technical Gateway): technicalDesigner; " +
           "Phase 3 (Content): balancingDesigner, narrativeDesigner; " +
           "Phase 4 (Execution): juniorDesigner; Other: default. " +
-          "LIMITS: Max " + AgentConstants.MAX_CONCURRENT_SUB_AGENTS + " total sub-agents and max " +
-          AgentConstants.MAX_CONCURRENT_JUNIOR_DESIGNERS + " juniorDesigner sub-agents at a time. " +
-          "If you hit a limit, dispatch tasks to existing agents, collect results, destroy them, then create a new batch.")
+          "Remember to destroy sub-agents after collecting results to free resources.")
     public String createSubAgent(
             @P("Agent type (e.g. systemDesigner, combatDesigner)") String type,
             @P("Brief task description for this agent") String task,
             @P("Additional system prompt instructions (optional, can be empty)") String additionalPrompt,
             @P("Additional tool names, comma-separated (optional, can be empty)") String additionalTools) {
         try {
-            List<SubAgentInfo> existing = subAgentService.listTeamAgents(userId, parentThreadId);
-
-            if (existing.size() >= AgentConstants.MAX_CONCURRENT_SUB_AGENTS) {
-                return String.format(
-                        "Cannot create sub-agent: total limit of %d concurrent sub-agents reached (currently %d active). " +
-                        "Please dispatch tasks to existing agents, await results, destroy completed ones, " +
-                        "then create new ones in the next batch.",
-                        AgentConstants.MAX_CONCURRENT_SUB_AGENTS, existing.size());
-            }
-
-            if ("juniorDesigner".equals(type)) {
-                long juniorCount = existing.stream().filter(a -> a.type().startsWith("juniorDesigner")).count();
-                if (juniorCount >= AgentConstants.MAX_CONCURRENT_JUNIOR_DESIGNERS) {
-                    return String.format(
-                            "Cannot create juniorDesigner: limit of %d concurrent juniorDesigner agents reached (currently %d active). " +
-                            "Please dispatch tasks to existing juniorDesigners, await results, destroy completed ones, " +
-                            "then create new ones in the next batch.",
-                            AgentConstants.MAX_CONCURRENT_JUNIOR_DESIGNERS, juniorCount);
-                }
-            }
-
             SubAgentInfo info = subAgentService.createSubAgent(
                     userId, parentThreadId, type, task,
                     normalizeEmpty(additionalPrompt),
