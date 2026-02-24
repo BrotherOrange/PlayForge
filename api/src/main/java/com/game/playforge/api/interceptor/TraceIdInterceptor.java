@@ -28,14 +28,14 @@ public class TraceIdInterceptor implements HandlerInterceptor {
         String traceId = UUID.randomUUID().toString().replace("-", "");
         MDC.put(AuthConstants.TRACE_ID_MDC_KEY, traceId);
         response.setHeader(AuthConstants.TRACE_ID_HEADER, traceId);
-        log.info("请求开始, method={}, uri={}, traceId={}", request.getMethod(), request.getRequestURI(), traceId);
+        log.debug("请求开始, method={}, uri={}, traceId={}", request.getMethod(), request.getRequestURI(), traceId);
         return true;
     }
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
                                 Object handler, Exception ex) {
-        log.info("请求结束, method={}, uri={}, status={}", request.getMethod(), request.getRequestURI(), response.getStatus());
+        log.debug("请求结束, method={}, uri={}, status={}", request.getMethod(), request.getRequestURI(), response.getStatus());
         MDC.remove(AuthConstants.TRACE_ID_MDC_KEY);
     }
 }
