@@ -33,6 +33,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
+import org.slf4j.MDC;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -164,7 +166,11 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
             // Use virtual thread so SSE progress events are pushed in real-time
             // while the sync chat blocks until complete.
             activeProcessingThreads.add(threadId);
+            Map<String, String> mdcContext = MDC.getCopyOfContextMap();
             Thread.startVirtualThread(() -> {
+                if (mdcContext != null) {
+                    MDC.setContextMap(mdcContext);
+                }
                 try {
                     Consumer<AgentStreamEvent> progressCallback = event -> {
                         if (AgentStreamEvent.TYPE_PROGRESS.equals(event.type())
@@ -227,6 +233,7 @@ public class AgentChatAppServiceImpl implements AgentChatAppService {
                     }
                 } finally {
                     activeProcessingThreads.remove(threadId);
+                    MDC.clear();
                 }
             });
 

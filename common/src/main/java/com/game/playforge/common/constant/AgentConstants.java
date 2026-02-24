@@ -57,7 +57,12 @@ public final class AgentConstants {
     public static final int SUB_AGENT_MAX_OUTPUT_TOKENS = 24576;
 
     /**
-     * 同一父线程下同时存活的子Agent数量上限（超过需分批创建）
+     * 同一父线程下juniorDesigner（执行策划）同时存活的数量上限（超过需分批创建）
      */
-    public static final int MAX_CONCURRENT_SUB_AGENTS = 10;
+    public static final int MAX_CONCURRENT_JUNIOR_DESIGNERS = 10;
+
+    /**
+     * 同一父线程下所有子Agent同时存活的总数上限
+     */
+    public static final int MAX_CONCURRENT_SUB_AGENTS = 20;
 }

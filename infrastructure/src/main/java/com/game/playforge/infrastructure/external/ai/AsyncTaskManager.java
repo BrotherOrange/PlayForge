@@ -1,6 +1,7 @@
 package com.game.playforge.infrastructure.external.ai;
 
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -48,7 +49,18 @@ public class AsyncTaskManager {
         }
         agentNames.put(threadId, agentName);
 
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(task, executor);
+        Map<String, String> mdcContext = MDC.getCopyOfContextMap();
+        Supplier<String> mdcAwareTask = () -> {
+            if (mdcContext != null) {
+                MDC.setContextMap(mdcContext);
+            }
+            try {
+                return task.get();
+            } finally {
+                MDC.clear();
+            }
+        };
+        CompletableFuture<String> future = CompletableFuture.supplyAsync(mdcAwareTask, executor);
         pending.put(threadId, future);
 
         future.whenComplete((result, error) -> {
