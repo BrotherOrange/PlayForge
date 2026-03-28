@@ -1693,6 +1693,9 @@
 }
 
 .pf-review-hero.compact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   margin-bottom: 24px;
 }
 
@@ -1722,6 +1725,7 @@
 .pf-review-link {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 10px 14px;
   border: 1px solid rgba(0, 212, 255, 0.2);
@@ -1729,6 +1733,7 @@
   color: var(--sf-text);
   text-decoration: none;
   background: rgba(17, 24, 39, 0.72);
+  white-space: nowrap;
 }
 
 .pf-review-link:hover {
@@ -1987,7 +1992,7 @@
 }
 
 .pf-review-history-list.compact {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .pf-review-history-card {
@@ -2178,6 +2183,9 @@
   display: flex;
   gap: 10px;
   align-items: center;
+  justify-self: end;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .pf-review-toolbar {
@@ -2583,13 +2591,22 @@
 .pf-review-stream-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   padding: 10px 14px;
+  min-height: 48px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--sf-text);
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pf-review-header-actions .pf-review-link,
+.pf-review-header-actions .pf-review-stream-chip {
+  min-inline-size: 96px;
 }
 
 .pf-review-stream-chip.live {
@@ -2983,6 +3000,11 @@
   .pf-review-hero-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .pf-review-hero.compact {
+    display: flex;
+    grid-template-columns: none;
   }
 
   .pf-review-header-actions {

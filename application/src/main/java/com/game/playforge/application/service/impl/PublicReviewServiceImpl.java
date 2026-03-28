@@ -77,7 +77,6 @@ public class PublicReviewServiceImpl implements PublicReviewService {
 
     private static final int MAX_INPUT_ITEMS = 3;
     private static final int CHUNK_CHAR_LIMIT = 6000;
-    private static final int MAX_ANNOTATIONS_PER_CHUNK = 8;
     private static final int MAX_QUOTE_LENGTH = 500;
     private static final int MAX_TITLE_LENGTH = 255;
     private static final int MAX_ERROR_LENGTH = 1000;
@@ -1024,9 +1023,13 @@ public class PublicReviewServiceImpl implements PublicReviewService {
         builder.append("- Always write title and content in the same primary language as the original document.\n");
         builder.append("- If the document is Chinese, use Simplified Chinese for all annotations.\n");
         builder.append("- Ignore parts that do not need useful feedback.\n");
+        builder.append("- Be thorough and surface as many genuine findings as you notice.\n");
+        builder.append("- Minor ambiguities, missing details, readability issues, edge cases, and optimization suggestions are all worth calling out if they are real.\n");
+        builder.append("- Do not invent issues just to increase the count.\n");
+        builder.append("- If a chunk is already clear and solid, it is still valid to return no findings.\n");
         builder.append("- Do not invent blockIds, people, features, or facts.\n");
         builder.append("- Keep quoteText in the exact original wording and language from the document.\n");
-        builder.append("- Maximum ").append(MAX_ANNOTATIONS_PER_CHUNK).append(" annotations for this chunk.\n\n");
+        builder.append("- The number of annotations is up to you; return as many as are genuinely warranted.\n\n");
         if (prefersXmlReviewPayload(reviewTask)) {
             builder.append("Response format:\n");
             builder.append("- Return only XML in the exact shape below.\n");

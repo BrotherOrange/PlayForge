@@ -302,7 +302,7 @@ const PublicReviewPreviewPage = () => {
 
       <div className="pf-review-shell">
         <header className="pf-review-hero compact">
-          <div>
+          <div className="pf-review-hero-copy">
             <div className="pf-review-eyebrow">公开评审结果页</div>
             <h1>{task.title}</h1>
             <p>

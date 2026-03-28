@@ -13,6 +13,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +35,9 @@ import java.util.regex.Pattern;
 public class GeminiDocumentConversionService implements DocumentConversionService {
 
     private static final String ENGINE = "gemini-markdown-normalizer";
-    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("doc", "docx", "pdf", "xls", "xlsx");
+    private static final String DIRECT_ENGINE = "direct-text-pass-through";
+    private static final Charset GB18030 = Charset.forName("GB18030");
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("doc", "docx", "pdf", "xls", "xlsx", "txt", "md", "markdown");
     private static final Pattern MD_TEXT_PATTERN =
             Pattern.compile("(?is)<md-text>\\s*(.*?)\\s*</md-text>");
     private static final Pattern GOOGLE_ERROR_MESSAGE_PATTERN =
@@ -46,15 +53,6 @@ public class GeminiDocumentConversionService implements DocumentConversionServic
             - For spreadsheets, reconstruct meaningful Markdown sections and tables from the extracted rows and sheet names.
             - If the extraction notes mention omitted images or unreadable regions, reflect that uncertainty briefly instead of guessing.
             - Do not invent missing content.
-            - Return only one wrapper block and nothing outside it.
-            """;
-    private static final String TEXT_SYSTEM_PROMPT = """
-            You are a document normalization engine.
-            Convert the provided title and body into a clean Markdown document.
-            Rules:
-            - Preserve the original language of the source text. Do not translate it into another language.
-            - Keep the meaning, facts, numbers, and requirements exactly aligned with the source. Do not invent content.
-            - Improve structure and readability only through Markdown formatting such as headings, lists, tables, and blockquotes.
             - Return only one wrapper block and nothing outside it.
             """;
 
@@ -76,8 +74,12 @@ public class GeminiDocumentConversionService implements DocumentConversionServic
         if (!SUPPORTED_EXTENSIONS.contains(extension)) {
             throw new BusinessException(
                     ResultCode.DOCUMENT_FORMAT_UNSUPPORTED,
-                    "Supported formats are pdf, doc, docx, xls, and xlsx."
+                    "Supported formats are pdf, doc, docx, xls, xlsx, txt, md, and markdown."
             );
+        }
+
+        if (isDirectTextExtension(extension)) {
+            return buildDirectFileResult(filename, extension, content);
         }
 
         try {
@@ -110,17 +112,94 @@ public class GeminiDocumentConversionService implements DocumentConversionServic
         if ((title == null || title.isBlank()) && (content == null || content.isBlank())) {
             throw new BusinessException(ResultCode.PARAM_VALIDATION_FAILED, "Title or content is required.");
         }
+        return buildDirectTextMarkdown(title, content);
+    }
 
-        try {
-            String apiKey = requireApiKey();
-            String rawResponse = generateTextContent(apiKey, buildTextPrompt(title, content));
-            return extractMarkdown(rawResponse).markdown();
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Failed to normalize text with Gemini", e);
-            throw new BusinessException(ResultCode.DOCUMENT_CONVERSION_FAILED, "Gemini text normalization failed.");
+    private boolean isDirectTextExtension(String extension) {
+        return "txt".equals(extension) || "md".equals(extension) || "markdown".equals(extension);
+    }
+
+    private DocumentConversionResult buildDirectFileResult(String filename, String extension, byte[] content) {
+        DecodedText decodedText = decodePlainTextContent(content);
+        String markdown = normalizeDirectMarkdown(decodedText.text());
+        if (markdown.isBlank()) {
+            throw new BusinessException(
+                    ResultCode.DOCUMENT_CONVERSION_FAILED,
+                    "The uploaded text file did not contain usable content."
+            );
         }
+
+        return new DocumentConversionResult(
+                filename,
+                extension,
+                markdown,
+                DIRECT_ENGINE,
+                decodedText.warnings()
+        );
+    }
+
+    private String buildDirectTextMarkdown(String title, String content) {
+        String safeTitle = title == null ? "" : title.trim();
+        String safeContent = content == null ? "" : normalizeDirectMarkdown(content);
+
+        if (safeTitle.isBlank()) {
+            return safeContent;
+        }
+        if (safeContent.isBlank()) {
+            return "# " + safeTitle;
+        }
+        return "# " + safeTitle + "\n\n" + safeContent;
+    }
+
+    private String normalizeDirectMarkdown(String rawText) {
+        if (rawText == null) {
+            return "";
+        }
+        return rawText
+                .replace("\uFEFF", "")
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .trim();
+    }
+
+    private DecodedText decodePlainTextContent(byte[] content) {
+        byte[] sanitized = stripUtf8Bom(content);
+        try {
+            return new DecodedText(decodeStrict(sanitized, StandardCharsets.UTF_8), List.of());
+        } catch (CharacterCodingException ignored) {
+            try {
+                return new DecodedText(
+                        decodeStrict(sanitized, GB18030),
+                        List.of("The original text file was decoded with GB18030 because it was not valid UTF-8.")
+                );
+            } catch (CharacterCodingException secondFailure) {
+                String fallback = new String(sanitized, StandardCharsets.UTF_8);
+                return new DecodedText(
+                        fallback,
+                        List.of("The original text file could not be decoded cleanly; UTF-8 fallback was used.")
+                );
+            }
+        }
+    }
+
+    private String decodeStrict(byte[] content, Charset charset) throws CharacterCodingException {
+        return charset.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(content))
+                .toString();
+    }
+
+    private byte[] stripUtf8Bom(byte[] content) {
+        if (content.length >= 3
+                && (content[0] & 0xFF) == 0xEF
+                && (content[1] & 0xFF) == 0xBB
+                && (content[2] & 0xFF) == 0xBF) {
+            byte[] trimmed = new byte[content.length - 3];
+            System.arraycopy(content, 3, trimmed, 0, trimmed.length);
+            return trimmed;
+        }
+        return content;
     }
 
     private ConversionPayload buildConversionPayload(String filename, String contentType, byte[] content, String extension) {
@@ -270,27 +349,6 @@ public class GeminiDocumentConversionService implements DocumentConversionServic
         );
     }
 
-    private String buildTextPrompt(String title, String content) {
-        String safeTitle = title == null ? "" : title.trim();
-        String safeContent = content == null ? "" : content.trim();
-        return """
-                %s
-
-                Convert the following source text into Markdown now.
-                Return only the following wrapper and nothing else:
-                <md-text>
-                ...markdown content...
-                </md-text>
-
-                <source-title>
-                %s
-                </source-title>
-                <source-body>
-                %s
-                </source-body>
-                """.formatted(TEXT_SYSTEM_PROMPT, safeTitle, safeContent);
-    }
-
     private String extractResponseText(GenerateContentResponse response) {
         if (response == null || response.candidates() == null || response.candidates().isEmpty()) {
             return null;
@@ -373,6 +431,12 @@ public class GeminiDocumentConversionService implements DocumentConversionServic
 
     private record MarkdownExtraction(
             String markdown,
+            List<String> warnings
+    ) {
+    }
+
+    private record DecodedText(
+            String text,
             List<String> warnings
     ) {
     }

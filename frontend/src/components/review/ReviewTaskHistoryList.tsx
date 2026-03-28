@@ -18,6 +18,8 @@ interface ReviewTaskHistoryListProps {
 const getModelDisplayName = (provider: string, modelName: string) =>
   AVAILABLE_MODELS.find((item) => item.provider === provider && item.modelName === modelName)?.displayName ?? modelName;
 
+const getSourceLabel = (source: ReviewTaskHistoryItem['source']) => (source === 'server' ? '账号记录' : '本机最近');
+
 const ReviewTaskHistoryList = ({
   tasks,
   loading,
@@ -61,7 +63,7 @@ const ReviewTaskHistoryList = ({
               <div className="pf-review-history-main">
                 <div className="pf-review-history-topline">
                   <span className={`pf-review-status-badge ${task.status}`}>{getReviewStatusLabel(task.status)}</span>
-                  <span className={`pf-review-source-badge ${task.source}`}>{task.source === 'server' ? '账号记录' : '本机最近'}</span>
+                  <span className={`pf-review-source-badge ${task.source}`}>{getSourceLabel(task.source)}</span>
                 </div>
                 <h3>{task.title}</h3>
                 <div className="pf-review-history-meta">
