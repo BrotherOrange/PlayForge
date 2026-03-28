@@ -42,5 +42,8 @@ application-local.properties
 
 ### Deploy secrets ###
 deploy/deploy-all.sh
+deploy/env.local
+deploy/*.local.env
+/.codex/
 /AGENTS.md
 /CLAUDE.md

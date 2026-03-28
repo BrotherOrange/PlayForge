@@ -22,25 +22,8 @@ import remarkGfm from 'remark-gfm';
 import { listAgents, createAgentWithThread, deleteAgent, getMessages, getThreadProcessingStatus, chatThreadSSE } from '../api/chat';
 import TeamPanel from '../components/TeamPanel';
 import { getAgentLabel, getAgentColor, getAgentTypeFromName } from '../constants/agentTypes';
+import { AVAILABLE_MODELS, PROVIDER_COLORS, PROVIDER_LABELS } from '../constants/models';
 import { AgentDefinition, AgentMessage, UserProfile } from '../types/api';
-
-const PROVIDER_COLORS: Record<string, string> = {
-  openai: '#00d4ff',
-  anthropic: '#a78bfa',
-  gemini: '#34d399',
-};
-
-const PROVIDER_LABELS: Record<string, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  gemini: 'Gemini',
-};
-
-const AVAILABLE_MODELS = [
-  { provider: 'openai', modelName: 'gpt-5.2', displayName: 'GPT-5.2' },
-  { provider: 'anthropic', modelName: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6' },
-  { provider: 'gemini', modelName: 'gemini-3-flash-preview', displayName: 'Gemini 3 Flash' },
-];
 
 const MESSAGE_FETCH_LIMIT = 200;
 
@@ -161,7 +144,7 @@ const ChatPage = () => {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
-      message.error('Failed to copy');
+      message.error('复制失败，请稍后重试。');
     }
   }, []);
 
@@ -343,7 +326,7 @@ const ChatPage = () => {
       setSelectedAgent(agent);
       setMessages([]);
     } catch {
-      message.error('Failed to create conversation');
+      message.error('创建会话失败，请稍后重试。');
     } finally {
       setCreatingAgent(false);
     }
@@ -367,7 +350,7 @@ const ChatPage = () => {
       }
       setTeamPanelOpen(false);
     } catch {
-      message.error('Failed to delete conversation');
+      message.error('删除会话失败，请稍后重试。');
     }
   };
 
@@ -503,7 +486,7 @@ const ChatPage = () => {
             }
             break;
           case 'error':
-            message.error(event.content || 'Failed to get response');
+            message.error(event.content || '获取回复失败，请稍后重试。');
             break;
           default:
             break;
@@ -538,7 +521,7 @@ const ChatPage = () => {
       refreshedFromDb = true;
       loadAgents();
     } catch {
-      message.error('Failed to get response, please try again');
+      message.error('获取回复失败，请稍后重试。');
     } finally {
       if (!refreshedFromDb && activeThreadIdRef.current === sendingThreadId) {
         const fallbackBubbles = streamingBubblesRef.current;
@@ -583,10 +566,10 @@ const ChatPage = () => {
   };
 
   const getBubbleRoleLabel = (msg: AgentMessage) => {
-    if (msg.role === 'user') return 'You';
-    if (msg.role === 'tool' && msg.toolName === 'progress') return 'Status';
+    if (msg.role === 'user') return '你';
+    if (msg.role === 'tool' && msg.toolName === 'progress') return '状态';
     if (msg.role === 'tool' && msg.toolName === 'thinking') {
-      return `${selectedAgent?.displayName || 'AI'} Thinking`;
+      return `${selectedAgent?.displayName || 'AI'} 思考过程`;
     }
     return selectedAgent?.displayName || 'AI';
   };
@@ -610,14 +593,14 @@ const ChatPage = () => {
             disabled={creatingAgent || !isAdmin}
             title={!isAdmin ? '需要管理员权限' : undefined}
           >
-            <PlusOutlined /> New Chat
+            <PlusOutlined /> 新建会话
           </button>
 
           {/* Conversation List */}
-          <div className="sf-chat-section-label">CONVERSATIONS</div>
+          <div className="sf-chat-section-label">会话列表</div>
           <div className="sf-chat-thread-list">
             {leadAgents.length === 0 && (
-              <div className="sf-chat-empty-hint">No conversations yet</div>
+              <div className="sf-chat-empty-hint">还没有任何会话</div>
             )}
             {leadAgents.map((agent) => {
               const agentSubAgents = agent.threadId
@@ -744,7 +727,7 @@ const ChatPage = () => {
               <button
                 className={`sf-team-toggle-btn ${teamPanelOpen ? 'active' : ''}`}
                 onClick={() => setTeamPanelOpen(!teamPanelOpen)}
-                title="Toggle team panel"
+                title="展开或收起协作面板"
               >
                 <TeamOutlined />
                 <span className="sf-team-toggle-count">
@@ -762,9 +745,9 @@ const ChatPage = () => {
               <RobotOutlined
                 style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }}
               />
-              <h2>Welcome to PlayForge AI Chat</h2>
+              <h2>欢迎来到 PlayForge AI 对话</h2>
               {isAdmin ? (
-                <p>Click "New Chat" to select a model and start a conversation.</p>
+                <p>点击“新建会话”即可选择模型并开始对话。</p>
               ) : (
                 <p style={{ color: 'var(--sf-text-muted)' }}>
                   <LockOutlined style={{ marginRight: 6 }} />
@@ -779,8 +762,8 @@ const ChatPage = () => {
               <RobotOutlined
                 style={{ fontSize: 48, color: 'var(--sf-primary)', marginBottom: 16 }}
               />
-              <h2>Start a conversation</h2>
-              <p>Type a message below to begin.</p>
+              <h2>开始一段对话</h2>
+              <p>在下方输入消息即可开始。</p>
             </div>
           )}
 
@@ -795,7 +778,7 @@ const ChatPage = () => {
               <button
                 className={`sf-bubble-copy-btn ${copiedId === msg.id ? 'copied' : ''}`}
                 onClick={() => handleCopy(msg.id, msg.content)}
-                title="Copy"
+                title="复制"
               >
                 {copiedId === msg.id ? <CheckOutlined /> : <CopyOutlined />}
               </button>
@@ -811,7 +794,7 @@ const ChatPage = () => {
                     <span className="sf-collapsible-icon">
                       {statusExpanded ? <DownOutlined /> : <RightOutlined />}
                     </span>
-                    <span className="sf-chat-bubble-role">Status</span>
+                    <span className="sf-chat-bubble-role">状态</span>
                     <span className="sf-status-count">{streamingGroups.progress.length}</span>
                     {!statusExpanded && (
                       <span className="sf-status-latest">
@@ -842,7 +825,7 @@ const ChatPage = () => {
                       {thinkingExpanded ? <DownOutlined /> : <RightOutlined />}
                     </span>
                     <span className="sf-chat-bubble-role">
-                      {selectedAgent?.displayName || 'AI'} Thinking
+                      {selectedAgent?.displayName || 'AI'} 思考过程
                     </span>
                   </div>
                   {thinkingExpanded && (
@@ -870,7 +853,7 @@ const ChatPage = () => {
                   <button
                     className={`sf-bubble-copy-btn ${copiedId === msg.id ? 'copied' : ''}`}
                     onClick={() => handleCopy(msg.id, msg.content)}
-                    title="Copy"
+                    title="复制"
                   >
                     {copiedId === msg.id ? <CheckOutlined /> : <CopyOutlined />}
                   </button>
@@ -880,11 +863,11 @@ const ChatPage = () => {
               {/* Loading indicator */}
               {streamingBubbles.length === 0 && (
                 <div className="sf-chat-bubble assistant">
-                  <div className="sf-chat-bubble-role">Status</div>
+                  <div className="sf-chat-bubble-role">状态</div>
                   <div className="sf-chat-bubble-content">
                     <div className="sf-chat-typing">
                       <LoadingOutlined style={{ marginRight: 8 }} />
-                      Running...
+                      正在处理中...
                     </div>
                   </div>
                 </div>
@@ -912,7 +895,7 @@ const ChatPage = () => {
                 <textarea
                   ref={inputRef}
                   className="sf-chat-input"
-                  placeholder="Message"
+                  placeholder="输入消息"
                   value={inputValue}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
@@ -941,7 +924,7 @@ const ChatPage = () => {
 
       {/* Model Picker Modal */}
       <Modal
-        title="Select a Model"
+        title="选择模型"
         open={modelPickerOpen}
         onCancel={() => setModelPickerOpen(false)}
         footer={null}

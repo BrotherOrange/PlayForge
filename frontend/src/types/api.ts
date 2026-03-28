@@ -116,3 +116,121 @@ export interface ChatProgressEvent {
   type: 'token' | 'thinking' | 'progress' | 'response' | 'done' | 'error';
   content?: string;
 }
+
+export interface ReviewBlockData {
+  blockId: string;
+  blockType: string;
+  markdown: string;
+  text: string;
+}
+
+export interface PublicReviewCreateResult {
+  publicId: string;
+  status: string;
+  title: string;
+}
+
+export interface PublicReviewTaskSummary {
+  publicId: string;
+  title: string;
+  provider: string;
+  modelName: string;
+  status: string;
+  documentCount: number;
+  hasOverallReport: boolean;
+  errorMessage: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface PublicReviewFileItem {
+  title?: string;
+  originalFilename: string;
+  contentType: string;
+  objectKey: string;
+}
+
+export interface PublicReviewCreateRequest {
+  taskTitle?: string;
+  provider: string;
+  modelName: string;
+  fileItems: PublicReviewFileItem[];
+  textItems: PublicReviewTextEntry[];
+}
+
+export interface PublicReviewRoleRunDetail {
+  id: string;
+  roleKey: string;
+  roleName: string;
+  roleColor: string;
+  status: string;
+  annotationCount: number;
+  errorMessage: string | null;
+  completedAt: string | null;
+}
+
+export interface PublicReviewAnnotationDetail {
+  id: string;
+  roleRunId: string;
+  roleKey: string;
+  roleName: string;
+  roleColor: string;
+  annotationType: 'question' | 'note' | 'opinion' | string;
+  priority: 'high' | 'medium' | 'low' | string;
+  blockId: string;
+  startOffset: number;
+  endOffset: number;
+  quoteText: string;
+  title: string;
+  content: string;
+  createdAt: string | null;
+}
+
+export interface PublicReviewDocumentDetail {
+  id: string;
+  sourceType: 'file' | 'text' | string;
+  sortOrder: number;
+  title: string;
+  originalFilename: string | null;
+  status: string;
+  warnings: string[];
+  summaryMarkdown: string | null;
+  errorMessage: string | null;
+  blocks: ReviewBlockData[];
+  roleRuns: PublicReviewRoleRunDetail[];
+  annotations: PublicReviewAnnotationDetail[];
+}
+
+export interface PublicReviewReportHistoryDetail {
+  id: string;
+  reportScope: string;
+  title: string;
+  provider: string;
+  modelName: string;
+  reportMarkdown: string;
+  createdAt: string | null;
+}
+
+export interface PublicReviewTaskDetail {
+  publicId: string;
+  title: string;
+  provider: string;
+  modelName: string;
+  status: string;
+  documentCount: number;
+  overallReportMarkdown: string | null;
+  errorMessage: string | null;
+  createdAt: string | null;
+  documents: PublicReviewDocumentDetail[];
+  reportHistory: PublicReviewReportHistoryDetail[];
+}
+
+export interface PublicReviewSnapshotEvent {
+  type?: 'snapshot' | string;
+  task?: PublicReviewTaskDetail;
+}
+
+export interface PublicReviewTextEntry {
+  title: string;
+  content: string;
+}
