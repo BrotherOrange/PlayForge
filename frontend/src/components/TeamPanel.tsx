@@ -335,7 +335,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
         setSending(false);
         refreshMessagesWithRetry(agent.id, agent.threadId!, 1);
       } catch {
-        message.error('Sub-agent message failed, please retry');
+        message.error('子代理发送失败，请稍后重试。');
         setCardStates((prev) => {
           const current = prev[agent.id];
           if (!current) return prev;
@@ -389,7 +389,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
         }
         if (payload.type === 'error') {
           completed = true;
-          message.error(payload.content || 'Sub-agent stream error');
+          message.error(payload.content || '子代理流式响应出错。');
           ws.close(1002, 'stream-error');
           fallbackToSyncChat();
         }
@@ -428,7 +428,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
     <div className="sf-team-panel">
       <div className="sf-team-panel-header">
         <TeamOutlined style={{ marginRight: 8 }} />
-        <span>Sub-Agents ({subAgents.length})</span>
+        <span>协作成员（{subAgents.length}）</span>
         <button className="sf-team-panel-close" onClick={onClose}>
           <CloseOutlined />
         </button>
@@ -493,12 +493,12 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
                 <div className="sf-subagent-card-body">
                   {isLoading && (
                     <div className="sf-subagent-loading">
-                      <LoadingOutlined /> Loading...
+                      <LoadingOutlined /> 加载中...
                     </div>
                   )}
 
                   {!isLoading && messages.length === 0 && (
-                    <div className="sf-subagent-empty">No messages yet</div>
+                    <div className="sf-subagent-empty">还没有消息</div>
                   )}
 
                   {!isLoading && messages.length > 0 && (
@@ -511,7 +511,7 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
                       {messages.map((msg) => (
                         <div key={msg.id} className={`sf-subagent-msg ${msg.role}`}>
                           <div className="sf-subagent-msg-role">
-                            {msg.role === 'user' ? 'Task' : 'Response'}
+                            {msg.role === 'user' ? '任务' : '回复'}
                           </div>
                           <div className="sf-subagent-msg-content sf-markdown">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -524,12 +524,12 @@ const TeamPanel = ({ subAgents, onClose }: TeamPanelProps) => {
                   )}
 
                   {isDestroyed ? (
-                    <div className="sf-subagent-inactive-hint">Agent destroyed</div>
+                    <div className="sf-subagent-inactive-hint">该 Agent 已销毁</div>
                   ) : (
                     <div className="sf-subagent-composer" onClick={(e) => e.stopPropagation()}>
                       <textarea
                         className="sf-subagent-input"
-                        placeholder="Task"
+                        placeholder="给这个协作成员补充说明"
                         rows={1}
                         value={inputValue}
                         disabled={isSending}

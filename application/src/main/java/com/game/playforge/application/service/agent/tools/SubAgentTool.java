@@ -55,7 +55,8 @@ public class SubAgentTool {
           "Pipeline types — Phase 2 (Mechanism): systemDesigner, combatDesigner, levelDesigner; " +
           "Phase X (Technical Gateway): technicalDesigner; " +
           "Phase 3 (Content): balancingDesigner, narrativeDesigner; " +
-          "Phase 4 (Execution): juniorDesigner; Other: default.")
+          "Phase 4 (Execution): juniorDesigner; Other: default. " +
+          "Remember to destroy sub-agents after collecting results to free resources.")
     public String createSubAgent(
             @P("Agent type (e.g. systemDesigner, combatDesigner)") String type,
             @P("Brief task description for this agent") String task,

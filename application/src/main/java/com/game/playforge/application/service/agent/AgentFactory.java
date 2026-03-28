@@ -13,7 +13,8 @@ import com.game.playforge.infrastructure.external.ai.SummarizingChatMemoryStore;
 import com.game.playforge.infrastructure.external.ai.SkillRegistry.SkillDescriptor;
 import com.game.playforge.infrastructure.external.ai.SystemPromptResolver;
 import com.game.playforge.infrastructure.external.ai.ToolRegistry;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.memory.chat.TokenWindowChatMemory;
+import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
@@ -51,6 +52,7 @@ public class AgentFactory {
     private final SkillRegistry skillRegistry;
     private final AgentTypeRegistry agentTypeRegistry;
     private final SummarizingChatMemoryStore summarizingChatMemoryStore;
+    private final TokenCountEstimator tokenCountEstimator;
 
     /**
      * 创建同步聊天Agent代理
@@ -88,7 +90,7 @@ public class AgentFactory {
         boolean hasSubAgentTool = hasSubAgentTool(definition);
         String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
         String systemPrompt = systemPromptResolver.resolve(definition, additionalContext);
-        MessageWindowChatMemory memory = buildMemory(definition, threadId);
+        TokenWindowChatMemory memory = buildMemory(definition, threadId);
         List<Object> tools = collectTools(definition, skillNameList, extraTools);
 
         AiServices<AgentChatService> builder = AiServices.builder(AgentChatService.class)
@@ -131,7 +133,7 @@ public class AgentFactory {
         boolean hasSubAgentTool = hasSubAgentTool(definition);
         String additionalContext = buildAdditionalContext(skillNameList, hasSubAgentTool);
         String systemPrompt = systemPromptResolver.resolve(definition, additionalContext);
-        MessageWindowChatMemory memory = buildMemory(definition, threadId);
+        TokenWindowChatMemory memory = buildMemory(definition, threadId);
         List<Object> tools = collectTools(definition, skillNameList, extraTools);
 
         AiServices<AgentStreamingChatService> builder = AiServices.builder(AgentStreamingChatService.class)
@@ -190,13 +192,10 @@ public class AgentFactory {
                 .collect(Collectors.toList());
     }
 
-    private MessageWindowChatMemory buildMemory(AgentDefinition definition, Long threadId) {
-        int windowSize = definition.getMemoryWindowSize() != null
-                ? definition.getMemoryWindowSize()
-                : AgentConstants.DEFAULT_MEMORY_WINDOW_SIZE;
-        return MessageWindowChatMemory.builder()
+    private TokenWindowChatMemory buildMemory(AgentDefinition definition, Long threadId) {
+        return TokenWindowChatMemory.builder()
                 .id(threadId)
-                .maxMessages(windowSize)
+                .maxTokens(AgentConstants.DEFAULT_MAX_MEMORY_TOKENS, tokenCountEstimator)
                 .chatMemoryStore(summarizingChatMemoryStore)
                 .build();
     }

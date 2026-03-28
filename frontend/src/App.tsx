@@ -5,6 +5,9 @@ import RegisterPage from './pages/RegisterPage';
 import HomePage from './pages/HomePage';
 import ProfilePage from './pages/ProfilePage';
 import ChatPage from './pages/ChatPage';
+import PublicReviewCreatePage from './pages/PublicReviewCreatePage';
+import PublicReviewPreviewPage from './pages/PublicReviewPreviewPage';
+import ReviewTaskHistoryPage from './pages/ReviewTaskHistoryPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './components/AppLayout';
 import './styles/scifi.css';
@@ -31,6 +34,15 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route
+            path="/reviews/new"
+            element={
+              <ProtectedRoute>
+                <PublicReviewCreatePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/reviews/:publicId" element={<PublicReviewPreviewPage />} />
+          <Route
             path="/"
             element={
               <ProtectedRoute>
@@ -41,6 +53,7 @@ function App() {
             <Route index element={<HomePage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="chat" element={<ChatPage />} />
+            <Route path="reviews/history" element={<ReviewTaskHistoryPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

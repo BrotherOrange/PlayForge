@@ -133,7 +133,7 @@ public class AgentThreadController {
             @RequestParam(defaultValue = "50") @Min(value = 1, message = "limit最小为1") @Max(value = 200, message = "limit最大为200") int limit,
             @RequestParam(defaultValue = "0") @Min(value = 0, message = "offset不能小于0") int offset) {
         Long userId = (Long) request.getAttribute(AuthConstants.CURRENT_USER_ID);
-        log.info("获取消息历史, userId={}, threadId={}, limit={}, offset={}", userId, id, limit, offset);
+        log.debug("获取消息历史, userId={}, threadId={}, limit={}, offset={}", userId, id, limit, offset);
         List<AgentMessage> messages = agentThreadService.getMessageHistory(userId, id, limit, offset);
         return ApiResult.success(agentMessageMapper.toResponseList(messages));
     }

@@ -43,12 +43,15 @@ public class SummarizingChatMemoryStore implements ChatMemoryStore {
 
     private final RedisChatMemoryStore delegate;
     private final ModelProviderRegistry modelProviderRegistry;
+    private final CharBasedTokenEstimator tokenEstimator;
     private final Map<Object, Long> recentlySummarized = new ConcurrentHashMap<>();
 
     public SummarizingChatMemoryStore(RedisChatMemoryStore delegate,
-                                      ModelProviderRegistry modelProviderRegistry) {
+                                      ModelProviderRegistry modelProviderRegistry,
+                                      CharBasedTokenEstimator tokenEstimator) {
         this.delegate = delegate;
         this.modelProviderRegistry = modelProviderRegistry;
+        this.tokenEstimator = tokenEstimator;
     }
 
     @Override
@@ -58,10 +61,13 @@ public class SummarizingChatMemoryStore implements ChatMemoryStore {
 
     @Override
     public void updateMessages(Object memoryId, List<ChatMessage> messages) {
-        if (messages.size() <= AgentConstants.SUMMARIZATION_TRIGGER_SIZE) {
+        int estimatedTokens = tokenEstimator.estimateTokenCountInMessages(messages);
+        if (estimatedTokens <= AgentConstants.SUMMARIZATION_TRIGGER_TOKENS) {
             delegate.updateMessages(memoryId, messages);
             return;
         }
+        log.info("记忆Token数超过阈值, memoryId={}, tokens={}, threshold={}",
+                memoryId, estimatedTokens, AgentConstants.SUMMARIZATION_TRIGGER_TOKENS);
 
         Long lastSummarized = recentlySummarized.get(memoryId);
         if (lastSummarized != null && System.currentTimeMillis() - lastSummarized < SUMMARIZATION_COOLDOWN_MS) {
@@ -75,6 +81,7 @@ public class SummarizingChatMemoryStore implements ChatMemoryStore {
             recentlySummarized.put(memoryId, System.currentTimeMillis());
         } catch (Exception e) {
             log.warn("记忆摘要生成失败, 回退到原始消息, memoryId={}", memoryId, e);
+            recentlySummarized.put(memoryId, System.currentTimeMillis());
             delegate.updateMessages(memoryId, messages);
         }
     }
@@ -86,7 +93,22 @@ public class SummarizingChatMemoryStore implements ChatMemoryStore {
     }
 
     private List<ChatMessage> compressMessages(Object memoryId, List<ChatMessage> messages) {
-        int splitIndex = messages.size() - AgentConstants.RECENT_MESSAGES_TO_KEEP;
+        // Iterate from end, accumulate tokens until reaching RECENT_TOKENS_TO_KEEP
+        int recentTokens = 0;
+        int splitIndex = messages.size();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            int msgTokens = tokenEstimator.estimateTokenCountInMessage(messages.get(i));
+            if (recentTokens + msgTokens > AgentConstants.RECENT_TOKENS_TO_KEEP) {
+                break;
+            }
+            recentTokens += msgTokens;
+            splitIndex = i;
+        }
+        // Ensure at least 1 message is summarized
+        if (splitIndex <= 0) {
+            splitIndex = 1;
+        }
+
         List<ChatMessage> oldMessages = messages.subList(0, splitIndex);
         List<ChatMessage> recentMessages = messages.subList(splitIndex, messages.size());
 
@@ -104,8 +126,10 @@ public class SummarizingChatMemoryStore implements ChatMemoryStore {
         result.add(SystemMessage.from(SUMMARY_PREFIX + "\n" + summaryText));
         result.addAll(recentMessages);
 
-        log.info("记忆摘要压缩完成, memoryId={}, 原消息数={}, 压缩后={}",
-                memoryId, messages.size(), result.size());
+        int originalTokens = tokenEstimator.estimateTokenCountInMessages(messages);
+        int compressedTokens = tokenEstimator.estimateTokenCountInMessages(result);
+        log.info("记忆摘要压缩完成, memoryId={}, 原消息数={}, 压缩后={}, 原Token数={}, 压缩后Token数={}",
+                memoryId, messages.size(), result.size(), originalTokens, compressedTokens);
         return result;
     }
 
