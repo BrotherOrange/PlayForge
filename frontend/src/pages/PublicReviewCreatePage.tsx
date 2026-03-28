@@ -19,7 +19,7 @@ interface DraftTextEntry extends PublicReviewTextEntry {
 }
 
 const MAX_ITEMS = 3;
-const ALLOWED_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xlsx', 'xls']);
+const ALLOWED_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xlsx', 'xls', 'txt', 'md', 'markdown']);
 
 const newTextEntry = (): DraftTextEntry => ({
   id: Math.random().toString(36).slice(2, 10),
@@ -261,7 +261,7 @@ const PublicReviewCreatePage = () => {
                 className="pf-review-hidden-input"
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.xlsx,.xls"
+                accept=".pdf,.doc,.docx,.xlsx,.xls,.txt,.md,.markdown"
                 onChange={handleFileChange}
               />
             </div>

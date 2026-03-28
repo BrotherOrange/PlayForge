@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { PlusOutlined } from '@ant-design/icons';
 import ReviewTaskHistoryList from '../components/review/ReviewTaskHistoryList';
 import { listMyReviewTasks } from '../api/reviewTasks';
-import { loadRecentReviewTasks, mergeReviewTaskHistory, ReviewTaskHistoryItem } from '../utils/reviewTaskHistory';
+import { ReviewTaskHistoryItem } from '../utils/reviewTaskHistory';
 
 type RequestErrorShape = {
   response?: {
@@ -22,15 +22,12 @@ const ReviewTaskHistoryPage = () => {
     setLoading(true);
     setError(null);
 
-    const localTasks = loadRecentReviewTasks();
-
     try {
       const response = await listMyReviewTasks(30);
-      const serverTasks = response.data.data;
-      setTasks(mergeReviewTaskHistory(serverTasks, localTasks));
+      setTasks(response.data.data.map((task) => ({ ...task, source: 'server' as const })));
     } catch (requestError) {
-      const fallbackMessage = '账号历史暂时读取失败，已先展示这台设备上的最近记录。';
-      setTasks(mergeReviewTaskHistory([], localTasks));
+      const fallbackMessage = '账号评审记录暂时读取失败，请稍后重试。';
+      setTasks([]);
       setError((requestError as RequestErrorShape).response?.data?.message ?? fallbackMessage);
     } finally {
       setLoading(false);
@@ -52,10 +49,7 @@ const ReviewTaskHistoryPage = () => {
           <div className="pf-review-hero-copy">
             <div className="pf-review-eyebrow">登录后查看</div>
             <h1>评审任务记录</h1>
-            <p>
-              这里会优先展示当前账号创建过的评审任务，同时保留这台设备最近打开过的评审记录，
-              这样你从首页返回后也能快速回到之前的任务。
-            </p>
+            <p>这里只展示当前账号创建过的评审任务，不会混入其他人创建的公开评审页面。</p>
           </div>
           <div className="pf-review-hero-actions">
             <Link className="pf-review-link pf-review-link-compact" to="/">
@@ -72,7 +66,7 @@ const ReviewTaskHistoryPage = () => {
           error={error}
           loading={loading}
           onRefresh={() => void loadTasks()}
-          subtitle="账号历史 + 本机最近任务"
+          subtitle="仅显示当前账号创建的评审任务。"
           tasks={tasks}
           title="我的评审任务"
         />

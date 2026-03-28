@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from 'antd';
 import ReviewTaskHistoryList from '../components/review/ReviewTaskHistoryList';
 import { listMyReviewTasks } from '../api/reviewTasks';
-import { loadRecentReviewTasks, mergeReviewTaskHistory, ReviewTaskHistoryItem } from '../utils/reviewTaskHistory';
+import { ReviewTaskHistoryItem } from '../utils/reviewTaskHistory';
 
 type RequestErrorShape = {
   response?: {
@@ -22,14 +22,13 @@ const HomePage = () => {
   const loadTasks = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const localTasks = loadRecentReviewTasks();
 
     try {
-      const response = await listMyReviewTasks(6);
-      setTasks(mergeReviewTaskHistory(response.data.data, localTasks).slice(0, 6));
+      const response = await listMyReviewTasks(4);
+      setTasks(response.data.data.map((task) => ({ ...task, source: 'server' as const })));
     } catch (requestError) {
-      setTasks(mergeReviewTaskHistory([], localTasks).slice(0, 6));
-      setError((requestError as RequestErrorShape).response?.data?.message ?? '账号记录暂时读取失败。');
+      setTasks([]);
+      setError((requestError as RequestErrorShape).response?.data?.message ?? '账号最近评审任务暂时读取失败。');
     } finally {
       setLoading(false);
     }
@@ -64,10 +63,10 @@ const HomePage = () => {
 
         <ReviewTaskHistoryList
           compact
-          emptyMessage="还没有最近评审任务，上传一份文档后就会在这里留下入口。"
+          emptyMessage="你最近还没有创建过评审任务，先去新建一个吧。"
           error={error}
           loading={loading}
-          subtitle="返回首页后也能继续找到它们"
+          subtitle="仅展示当前账号创建的最近 4 个评审任务。"
           tasks={tasks}
           title="最近评审任务"
         />
